@@ -302,33 +302,38 @@ export default function Home() {
           </div>
         )}
 
-        <div className="absolute inset-0 bg-[url('/pattern.png')] bg-repeat bg-[length:140px_140px] opacity-[0.04] pointer-events-none">
+        <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden df-bg">
+          
+          {/* Capa del Patrón: Pequeño (140px) y Sutil (4% de opacidad) */}
+          <div className="absolute inset-0 bg-[url('/pattern.png')] bg-repeat bg-[length:140px_140px] opacity-[0.04] pointer-events-none" />
 
-          {/* HERO SECTION */}
-          <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
-            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/5 rounded-full blur-[120px] pointer-events-none animate-pulse-glow" />
-            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-amber-600/5 rounded-full blur-[120px] pointer-events-none animate-float" />
+          {/* Tus luces decorativas originales */}
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/5 rounded-full blur-[120px] pointer-events-none animate-pulse-glow" />
+          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-amber-600/5 rounded-full blur-[120px] pointer-events-none animate-float" />
+          
+          {/* Contenido del Hero */}
+          <div className="relative z-10 text-center max-w-4xl px-6 animate-fade-in">
+            <p className="text-amber-600 text-xs md:text-sm font-semibold tracking-[0.25em] uppercase mb-6 flex items-center justify-center gap-3">
+              <span className="w-10 h-[1.5px] bg-amber-600 transition-all duration-500 hover:w-16"></span>
+              FOTOGRAFÍA · FILMACIÓN · PRODUCCIÓN
+              <span className="w-10 h-[1.5px] bg-amber-600 transition-all duration-500 hover:w-16"></span>
+            </p>
             
-            <div className="relative z-10 text-center max-w-4xl px-6 animate-fade-in">
-              <p className="text-amber-600 text-xs md:text-sm font-semibold tracking-[0.25em] uppercase mb-6 flex items-center justify-center gap-3">
-                <span className="w-10 h-[1.5px] bg-amber-600 transition-all duration-500 hover:w-16"></span>
-                FOTOGRAFÍA · FILMACIÓN · PRODUCCIÓN
-                <span className="w-10 h-[1.5px] bg-amber-600 transition-all duration-500 hover:w-16"></span>
-              </p>
-              <h1 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-tight leading-[1.08] mb-8 df-text">
-                Cada momento <br className="hidden md:block"/> tiene su <span className="text-amber-600 italic pr-2 font-serif inline-block transition-transform duration-500 hover:scale-105">luz.</span>
-              </h1>
-              <p className="df-muted text-lg md:text-xl max-w-2xl mx-auto mb-10 font-normal">
-                Inmortalizamos tu historia y potenciamos tu negocio con un estándar cinematográfico, sobrio y profesional.
-              </p>
-              <div className="flex flex-col sm:flex-row justify-center gap-4">
-                <a href="#portafolio" onClick={(e) => scrollToSection(e, '#portafolio')} className="btn-shimmer text-white px-8 py-4 rounded-xl font-bold transition-all duration-300 shadow-lg hover:shadow-2xl hover:-translate-y-1 active:scale-95 inline-block cursor-pointer">
-                  Explorar Especialidades
-                </a>
-              </div>
+            <h1 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-tight leading-[1.08] mb-8 df-text">
+              Cada momento <br className="hidden md:block"/> tiene su <span className="text-amber-600 italic pr-2 font-serif inline-block transition-transform duration-500 hover:scale-105">luz.</span>
+            </h1>
+            
+            <p className="df-muted text-lg md:text-xl max-w-2xl mx-auto mb-10 font-normal">
+              Inmortalizamos tu historia y potenciamos tu negocio con un estándar cinematográfico, sobrio y profesional.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row justify-center gap-4">
+              <a href="#portafolio" onClick={(e) => scrollToSection(e, '#portafolio')} className="btn-shimmer text-white px-8 py-4 rounded-xl font-bold transition-all duration-300 shadow-lg hover:shadow-2xl hover:-translate-y-1 active:scale-95 inline-block cursor-pointer">
+                Explorar Especialidades
+              </a>
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
         
 
         {/* SECCIÓN: SERVICIOS */}
