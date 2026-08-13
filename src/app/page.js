@@ -302,7 +302,7 @@ export default function Home() {
           </div>
         )}
 
-        <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden bg-zinc-950">
+        <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
         
         {/* Capa del Patrón en el Hero: Pequeño (140px) y Sutil */}
         <div className="absolute inset-0 bg-[url('/pattern.png')] bg-repeat bg-[length:140px_140px] opacity-[0.04] pointer-events-none" />
