@@ -304,9 +304,16 @@ export default function Home() {
 
         <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden df-bg">
           
-          {/* Capa del Patrón: Pequeño (140px) y Sutil (4% de opacidad) */}
-          <div className="absolute inset-0 bg-[url('/pattern.png')] bg-repeat bg-[length:140px_140px] opacity-[0.04] pointer-events-none" />
-
+          <div 
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage: "url('/pattern.png')",
+              backgroundRepeat: "repeat",
+              backgroundSize: "140px 140px",
+              opacity: 0.05 // Aquí controlas qué tan tenue se ve (0.05 es un 5%)
+            }}
+          />
+          
           {/* Tus luces decorativas originales */}
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/5 rounded-full blur-[120px] pointer-events-none animate-pulse-glow" />
           <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-amber-600/5 rounded-full blur-[120px] pointer-events-none animate-float" />
