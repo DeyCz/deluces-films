@@ -85,11 +85,9 @@ export default function SlugClient({ slug }) {
   const [mounted, setMounted] = useState(false);
   const data = infoCategorias[slug];
 
-  // Estados para las fotos dinámicas de Firebase
   const [galeriaFotos, setGaleriaFotos] = useState([]);
   const [cargandoFotos, setCargandoFotos] = useState(true);
 
-  // Estados del formulario de cotización
   const [nombre, setNombre] = useState('');
   const [tipoEvento, setTipoEvento] = useState(data ? data.formulario : '');
   const [mensaje, setMensaje] = useState('');
@@ -104,26 +102,26 @@ export default function SlugClient({ slug }) {
     const saved = localStorage.getItem('isDarkMode') === 'true';
     setIsDarkMode(saved);
 
-    // Función para traer las fotos de esta categoría desde Firebase
     const fetchGaleria = async () => {
       try {
         const q = query(collection(db, "galerias"), where("slug", "==", slug));
         const querySnapshot = await getDocs(q);
         const fotosList = querySnapshot.docs.map(doc => ({
           id: doc.id,
-          ...doc.data()
+          ...doc.data(),
+          orden: Number(doc.data().orden) || 1
         }));
+        
+        fotosList.sort((a, b) => a.orden - b.orden);
         setGaleriaFotos(fotosList);
       } catch (error) {
-        console.error("Error al cargar la galería desde Firebase:", error);
+        console.error("Error al cargar la galería:", error);
       } finally {
         setCargandoFotos(false);
       }
     };
 
-    if (slug) {
-      fetchGaleria();
-    }
+    if (slug) fetchGaleria();
   }, [slug]);
 
   useEffect(() => {
@@ -140,15 +138,12 @@ export default function SlugClient({ slug }) {
   }, [isDarkMode, mounted]);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setShowTopBtn(window.scrollY > 400);
-    };
+    const handleScroll = () => setShowTopBtn(window.scrollY > 400);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
-
   const goToTop = (e) => {
     if (e) e.preventDefault();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -158,7 +153,6 @@ export default function SlugClient({ slug }) {
     setTrabajoSeleccionado(item);
     setModalAbierto(true);
   };
-
   const cerrarModal = () => {
     setModalAbierto(false);
     setTrabajoSeleccionado(null);
@@ -166,30 +160,30 @@ export default function SlugClient({ slug }) {
 
   const handleWhatsAppSubmit = (e) => {
     e.preventDefault();
-    const numeroWhatsApp = '51967576214';
     const texto = `Hola Deluces Films, mi nombre es ${nombre}.\nEstoy interesado en cotizar un servicio de: *${tipoEvento}*.\n\nDetalles: ${mensaje}`;
-    const url = `https://wa.me/${numeroWhatsApp}?text=${encodeURIComponent(texto)}`;
-    window.open(url, '_blank');
+    window.open(`https://wa.me/51967576214?text=${encodeURIComponent(texto)}`, '_blank');
   };
 
-  if (!data) {
-    return (
-      <div className="min-h-screen df-bg df-text flex flex-col items-center justify-center p-6 text-center">
-        <h1 className="text-4xl font-bold mb-4">Servicio no encontrado</h1>
-        <p className="df-muted mb-8">El área que buscas no está disponible o la URL es incorrecta.</p>
-        <Link href="/" className="btn-shimmer text-white px-6 py-3 rounded-xl font-bold">
-          Volver al Inicio
-        </Link>
-      </div>
-    );
-  }
+  // Función para adaptar links de video (YouTube o Drive) al formato iframe
+  const obtenerLinkEmbed = (url) => {
+    if (!url) return '';
+    if (url.includes('youtube.com/watch?v=')) return url.replace('watch?v=', 'embed/');
+    if (url.includes('youtu.be/')) return url.replace('youtu.be/', 'youtube.com/embed/');
+    if (url.includes('drive.google.com') && url.includes('/view')) return url.replace('/view', '/preview').replace('?usp=sharing', '');
+    return url;
+  };
+
+  if (!data) return (
+    <div className="min-h-screen df-bg df-text flex flex-col items-center justify-center p-6 text-center">
+      <h1 className="text-4xl font-bold mb-4">Servicio no encontrado</h1>
+      <Link href="/" className="btn-shimmer text-white px-6 py-3 rounded-xl font-bold">Volver al Inicio</Link>
+    </div>
+  );
 
   const IconComponent = data.icono;
 
   return (
     <div className="min-h-screen df-bg df-text font-sans relative">
-      
-      {/* NAVEGACIÓN SECUNDARIA */}
       <nav className="fixed w-full top-0 z-50 df-bg/90 backdrop-blur-md border-b df-border py-4 px-6 md:px-12 flex justify-between items-center shadow-xs transition-colors duration-300">
         <Link href="/#portafolio" className="flex items-center gap-2 text-sm font-bold df-muted hover:df-text transition-colors">
           <ArrowLeft size={18} /> Volver al Portafolio
@@ -198,45 +192,33 @@ export default function SlugClient({ slug }) {
           DELUCES FILMS <span className={data.colorText}>/ {data.titulo}</span>
         </div>
         <div className="flex items-center gap-3">
-          <button 
-            onClick={toggleDarkMode}
-            className="p-2.5 rounded-full df-card border df-border df-text transition-transform hover:scale-110 cursor-pointer"
-            aria-label="Cambiar modo"
-          >
+          <button onClick={toggleDarkMode} className="p-2.5 rounded-full df-card border df-border df-text transition-transform hover:scale-110 cursor-pointer">
             {mounted && (isDarkMode ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} />)}
           </button>
-          <a href="#contacto-servicio" className="btn-shimmer text-white px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all">
-            Cotizar
-          </a>
+          <a href="#contacto-servicio" className="btn-shimmer text-white px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all">Cotizar</a>
         </div>
       </nav>
 
-      {/* CABEZAL DE LA PÁGINA */}
       <header className="pt-32 pb-16 px-6 md:px-12 text-center max-w-4xl mx-auto animate-fade-in">
         <div className={`inline-flex items-center justify-center w-16 h-16 df-card border df-border rounded-2xl mb-6 shadow-md ${data.colorText}`}>
           <IconComponent size={30} />
         </div>
         <p className={`${data.colorText} text-xs font-bold tracking-[0.25em] uppercase mb-3`}>{data.subtitulo}</p>
-        <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-6 df-text">
-          {data.titulo}
-        </h1>
-        <p className="df-muted text-lg max-w-2xl mx-auto font-normal">
-          {data.desc}
-        </p>
+        <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-6 df-text">{data.titulo}</h1>
+        <p className="df-muted text-lg max-w-2xl mx-auto font-normal">{data.desc}</p>
       </header>
 
-      {/* GALERÍA DINÁMICA DESDE FIREBASE */}
       <section className="py-12 px-6 md:px-12 max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <h2 className="text-2xl font-bold df-text">Galería Fotográfica</h2>
-          <span className="text-xs df-muted uppercase tracking-wider">Alta Resolución</span>
+          <h2 className="text-2xl font-bold df-text">Muestras del Servicio</h2>
+          <span className="text-xs df-muted uppercase tracking-wider">Portafolio Web</span>
         </div>
 
         {cargandoFotos ? (
-          <div className="text-center py-12 df-muted text-sm">Cargando galería desde la nube...</div>
+          <div className="text-center py-12 df-muted text-sm">Cargando portafolio desde la nube...</div>
         ) : galeriaFotos.length === 0 ? (
           <div className="df-card border df-border p-12 rounded-3xl text-center">
-            <p className="df-muted text-sm">Pronto agregaremos muestras fotográficas exclusivas para esta categoría.</p>
+            <p className="df-muted text-sm">Pronto agregaremos muestras exclusivas para esta categoría.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -244,25 +226,29 @@ export default function SlugClient({ slug }) {
               <div 
                 key={foto.id} 
                 onClick={() => abrirModal(foto)}
-                className="group relative h-[280px] df-card rounded-2xl overflow-hidden border df-border shadow-xs cursor-pointer flex items-center justify-center transition-all duration-500 hover:shadow-2xl hover:-translate-y-2"
+                className="group relative h-[280px] df-card rounded-2xl overflow-hidden border df-border shadow-xs cursor-pointer flex items-center justify-center transition-all duration-500 hover:shadow-2xl hover:-translate-y-2 bg-black"
               >
-                <img 
-                  src={foto.imagenUrl} 
-                  alt={foto.titulo} 
-                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 z-0"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60 group-hover:opacity-80 transition-opacity duration-300 z-10" />
+                <img src={foto.imagenUrl} alt={foto.titulo} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 z-0 opacity-80 group-hover:opacity-100" loading="lazy"/>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-70 group-hover:opacity-90 transition-opacity duration-300 z-10" />
+                
+                {/* ÍCONO DE PLAY SI TIENE VIDEO */}
+                {foto.videoUrl && (
+                  <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+                    <div className="w-14 h-14 bg-amber-600/90 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform">
+                      <Play fill="currentColor" size={24} className="ml-1" />
+                    </div>
+                  </div>
+                )}
+                
                 <div className="absolute top-4 right-4 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   <Eye size={18} />
                 </div>
+                
                 <div className="absolute bottom-4 left-4 right-4 z-20">
                   <span className={`text-[10px] uppercase tracking-wider font-bold text-white px-2.5 py-1 rounded-md shadow-xs ${data.colorText.replace('text-', 'bg-')}`}>
-                    {data.titulo}
+                    {foto.videoUrl ? 'Video' : 'Fotografía'}
                   </span>
-                  <h3 className="text-base font-bold mt-2 text-white drop-shadow-md">
-                    {foto.titulo}
-                  </h3>
+                  <h3 className="text-base font-bold mt-2 text-white drop-shadow-md">{foto.titulo}</h3>
                 </div>
               </div>
             ))}
@@ -270,54 +256,44 @@ export default function SlugClient({ slug }) {
         )}
       </section>
 
-      {/* VENTANA EMERGENTE (MODAL) PARA AMPLIAR FOTO */}
+      {/* MODAL PARA FOTO O VIDEO */}
       {modalAbierto && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
-          <div className="df-card border df-border rounded-3xl max-w-3xl w-full p-6 md:p-8 relative shadow-2xl">
-            <button 
-              onClick={cerrarModal}
-              className={`absolute top-6 right-6 df-bg df-text p-2.5 rounded-full transition-all shadow-xs cursor-pointer hover:text-white ${data.colorText.replace('text-', 'hover:bg-')}`}
-            >
+        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+          <div className="df-card border border-white/10 rounded-3xl max-w-4xl w-full p-4 md:p-6 relative shadow-2xl">
+            <button onClick={cerrarModal} className={`absolute -top-12 right-0 md:top-6 md:right-6 df-bg df-text p-2.5 rounded-full transition-all shadow-xs cursor-pointer hover:text-white ${data.colorText.replace('text-', 'hover:bg-')}`}>
               <X size={20} />
             </button>
-            <h3 className="text-2xl font-bold df-text mb-4">
-              {trabajoSeleccionado?.titulo}
-            </h3>
-            <div className="aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center relative shadow-inner mb-6">
-              <img 
-                src={trabajoSeleccionado?.imagenUrl} 
-                alt={trabajoSeleccionado?.titulo} 
-                className="w-full h-full object-contain"
-              />
+            
+            <h3 className="text-xl md:text-2xl font-bold df-text mb-4 mt-4 md:mt-0 px-2">{trabajoSeleccionado?.titulo}</h3>
+            
+            <div className="aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center relative shadow-inner mb-6 w-full">
+              {trabajoSeleccionado?.videoUrl ? (
+                <iframe 
+                  src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                ></iframe>
+              ) : (
+                <img src={trabajoSeleccionado?.imagenUrl} alt={trabajoSeleccionado?.titulo} className="w-full h-full object-contain"/>
+              )}
             </div>
-            <div className="flex justify-end gap-3">
-              <button 
-                onClick={cerrarModal}
-                className="px-6 py-3 rounded-xl border df-border text-sm font-bold df-muted hover:df-text transition-colors cursor-pointer"
-              >
-                Cerrar
-              </button>
-              <a 
-                href="#contacto-servicio" 
-                onClick={cerrarModal}
-                className={`px-6 py-3 rounded-xl text-white text-sm font-bold transition-all shadow-md text-center ${data.colorText.replace('text-', 'bg-')}`}
-              >
-                Cotizar proyecto similar
-              </a>
+            
+            <div className="flex justify-end gap-3 px-2">
+              <button onClick={cerrarModal} className="px-6 py-3 rounded-xl border df-border text-sm font-bold df-muted hover:df-text transition-colors cursor-pointer">Cerrar</button>
+              <a href="#contacto-servicio" onClick={cerrarModal} className={`px-6 py-3 rounded-xl text-white text-sm font-bold transition-all shadow-md text-center ${data.colorText.replace('text-', 'bg-')}`}>Cotizar proyecto similar</a>
             </div>
           </div>
         </div>
       )}
 
-      {/* FORMULARIO DE CONTACTO */}
+      {/* FORMULARIO CONTACTO */}
       <section id="contacto-servicio" className="py-20 px-6 md:px-12 df-card border-y df-border mt-20">
         <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-16">
           <div>
             <p className={`${data.colorText} text-xs font-bold tracking-widest uppercase mb-3`}>COTIZACIÓN RÁPIDA</p>
             <h2 className="text-3xl md:text-4xl font-extrabold mb-6 df-text">¿Te interesa este servicio?</h2>
-            <p className="df-muted mb-10 text-sm leading-relaxed">
-              Completa el formulario y te responderemos por WhatsApp con disponibilidad, opciones de paquetes y precios exactos para tu evento.
-            </p>
+            <p className="df-muted mb-10 text-sm leading-relaxed">Completa el formulario y te responderemos por WhatsApp con disponibilidad, opciones de paquetes y precios exactos para tu evento.</p>
             <div className="space-y-6">
               <div className="flex items-center gap-4 transition-transform duration-300 hover:translate-x-1">
                 <div className="w-12 h-12 df-bg rounded-xl flex items-center justify-center df-text shadow-xs"><Smartphone size={20}/></div>
@@ -325,7 +301,7 @@ export default function SlugClient({ slug }) {
               </div>
               <div className="flex items-center gap-4 transition-transform duration-300 hover:translate-x-1">
                 <div className="w-12 h-12 df-bg rounded-xl flex items-center justify-center df-text shadow-xs"><MapPin size={20}/></div>
-                <div><p className="text-xs df-muted">Ubicación de Cobertura</p><p className="font-semibold df-text">Cerro de Pasco y todo el Perú</p></div>
+                <div><p className="text-xs df-muted">Ubicación de Cobertura</p><p className="font-semibold df-text">Perú</p></div>
               </div>
             </div>
           </div>
@@ -335,12 +311,7 @@ export default function SlugClient({ slug }) {
             <form onSubmit={handleWhatsAppSubmit} className="space-y-4">
               <div>
                 <label className="text-xs font-bold df-muted mb-1.5 block">Tipo de Evento</label>
-                <select 
-                  value={tipoEvento}
-                  onChange={(e) => setTipoEvento(e.target.value)}
-                  required
-                  className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors df-text text-sm cursor-pointer"
-                >
+                <select value={tipoEvento} onChange={(e) => setTipoEvento(e.target.value)} required className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors df-text text-sm cursor-pointer">
                   <option value="">Selecciona el tipo de evento</option>
                   <option value="Eventos Institucionales">Eventos Institucionales</option>
                   <option value="Sesión de Fotos de Pareja">Sesión de Fotos de Pareja</option>
@@ -352,69 +323,34 @@ export default function SlugClient({ slug }) {
                   <option value="Fotos y Videos Personales">Fotos y Videos Personales</option>
                 </select>
               </div>
-
               <div>
                 <label className="text-xs font-bold df-muted mb-1.5 block">Tu Nombre / Empresa</label>
-                <input 
-                  type="text" 
-                  value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
-                  required
-                  className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors df-text text-sm" 
-                  placeholder="Ej. Juan Pérez" 
-                />
+                <input type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} required className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors df-text text-sm" placeholder="Ej. Juan Pérez" />
               </div>
-              
               <div>
                 <label className="text-xs font-bold df-muted mb-1.5 block">Detalles del proyecto</label>
-                <textarea 
-                  rows="4" 
-                  value={mensaje}
-                  onChange={(e) => setMensaje(e.target.value)}
-                  required
-                  className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors resize-none df-text text-sm" 
-                  placeholder="Cuéntanos la fecha, lugar o cualquier idea que tengas en mente..."
-                ></textarea>
+                <textarea rows="4" value={mensaje} onChange={(e) => setMensaje(e.target.value)} required className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors resize-none df-text text-sm" placeholder="Cuéntanos la fecha, lugar o cualquier idea..."></textarea>
               </div>
-
-              <button type="submit" className="w-full btn-shimmer text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-md hover:shadow-xl flex items-center justify-center gap-2 text-sm active:scale-95 cursor-pointer">
-                <Send size={18} /> Solicitar Cotización
-              </button>
+              <button type="submit" className="w-full btn-shimmer text-white font-bold py-4 rounded-xl transition-all shadow-md hover:shadow-xl flex items-center justify-center gap-2 text-sm"><Send size={18} /> Solicitar Cotización</button>
             </form>
           </div>
         </div>
       </section>
 
-      {/* BOTÓN VOLVER ARRIBA */}
       {showTopBtn && (
-        <button 
-          onClick={goToTop}
-          className="fixed bottom-24 right-6 z-40 df-card border df-border df-text p-3.5 rounded-full shadow-lg hover:bg-amber-600 hover:text-white transition-all duration-300 animate-fade-in flex items-center justify-center cursor-pointer"
-        >
+        <button onClick={goToTop} className="fixed bottom-24 right-6 z-40 df-card border df-border df-text p-3.5 rounded-full shadow-lg hover:bg-amber-600 hover:text-white transition-all duration-300 flex items-center justify-center cursor-pointer">
           <ArrowUp size={20} />
         </button>
       )}
 
-      {/* WIDGET WHATSAPP */}
-      <a 
-        href="https://wa.me/51967576214?text=Hola,%20me%20interesa%20cotizar%20un%20servicio%20audiovisual." 
-        target="_blank" 
-        rel="noopener noreferrer"
-        className="fixed bottom-6 right-6 z-50 bg-[#25D366] text-white p-3.5 rounded-full shadow-2xl whatsapp-pulse transition-all duration-300 flex items-center justify-center group cursor-pointer"
-      >
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="white" className="flex-shrink-0">
-          <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448zM12.002 2.15c-5.436 0-9.851 4.415-9.853 9.852-.001 1.872.518 3.704 1.509 5.31l-1.004 3.673 3.766-.988c1.554.948 3.351 1.447 5.182 1.448 5.436 0 9.851-4.415 9.853-9.852.001-5.303-4.315-9.621-9.653-9.623zm5.367 13.916c-.225.635-1.309 1.181-1.801 1.259-.467.074-1.07.135-3.078-.696-2.613-1.088-4.316-3.76-4.448-3.935-.132-.176-1.066-1.417-1.066-2.703 0-1.286.669-1.916.907-2.174.238-.258.519-.323.691-.323.173 0 .346.001.498.008.161.008.379-.061.594.464.226.553.774 1.887.842 2.025.068.138.113.3.023.482-.09.183-.135.297-.27.458-.135.161-.284.36-.406.484-.135.138-.277.288-.12.56.157.272.698 1.155 1.499 1.871 1.033.921 1.904 1.206 2.176 1.344.272.138.432.115.592-.069.16-.184.686-.798.868-1.072.182-.274.364-.229.614-.138.25.092 1.586.748 1.856.884.27.135.45.203.516.315.066.113.066.653-.159 1.288z"/>
-        </svg>
-        <span className="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs group-hover:ml-2 transition-all duration-500 ease-in-out text-sm font-bold">
-          ¡Escríbenos!
-        </span>
+      <a href="https://wa.me/51967576214?text=Hola,%20me%20interesa%20cotizar%20un%20servicio%20audiovisual." target="_blank" rel="noopener noreferrer" className="fixed bottom-6 right-6 z-50 bg-[#25D366] text-white p-3.5 rounded-full shadow-2xl whatsapp-pulse transition-all duration-300 flex items-center justify-center group cursor-pointer">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="white" className="flex-shrink-0"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448zM12.002 2.15c-5.436 0-9.851 4.415-9.853 9.852-.001 1.872.518 3.704 1.509 5.31l-1.004 3.673 3.766-.988c1.554.948 3.351 1.447 5.182 1.448 5.436 0 9.851-4.415 9.853-9.852.001-5.303-4.315-9.621-9.653-9.623zm5.367 13.916c-.225.635-1.309 1.181-1.801 1.259-.467.074-1.07.135-3.078-.696-2.613-1.088-4.316-3.76-4.448-3.935-.132-.176-1.066-1.417-1.066-2.703 0-1.286.669-1.916.907-2.174.238-.258.519-.323.691-.323.173 0 .346.001.498.008.161.008.379-.061.594.464.226.553.774 1.887.842 2.025.068.138.113.3.023.482-.09.183-.135.297-.27.458-.135.161-.284.36-.406.484-.135.138-.277.288-.12.56.157.272.698 1.155 1.499 1.871 1.033.921 1.904 1.206 2.176 1.344.272.138.432.115.592-.069.16-.184.686-.798.868-1.072.182-.274.364-.229.614-.138.25.092 1.586.748 1.856.884.27.135.45.203.516.315.066.113.066.653-.159 1.288z"/></svg>
+        <span className="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs group-hover:ml-2 transition-all duration-500 text-sm font-bold">¡Escríbenos!</span>
       </a>
 
-      {/* FOOTER */}
       <footer className="py-8 px-6 border-t df-border text-center df-muted text-xs df-card">
         <p>© 2026 Deluces Films. {data.titulo}.</p>
       </footer>
-
     </div>
   );
 }

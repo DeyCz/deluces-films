@@ -1,26 +1,60 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
-import { ShieldCheck, PlusCircle, ArrowLeft } from 'lucide-react';
+import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { ShieldCheck, PlusCircle, ArrowLeft, Image as ImageIcon, Trash2, Edit2, X, RefreshCw, Video } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AdminPage() {
   const [acceso, setAcceso] = useState(false);
   const [passAdmin, setPassAdmin] = useState('');
   
-  const [form, setForm] = useState({
-    nombreCliente: '',
-    password: '',
-    tipo: '',
-    fecha: '',
-    previewImage: '',
-    driveLink: ''
-  });
-  const [cargando, setCargando] = useState(false);
+  // ESTADOS CLIENTES
+  const clienteInicial = { nombreCliente: '', password: '', tipo: '', fecha: '', previewImage: '', driveLink: '' };
+  const [formCliente, setFormCliente] = useState(clienteInicial);
+  const [cargandoCliente, setCargandoCliente] = useState(false);
+  const [listaClientes, setListaClientes] = useState([]);
+  const [editandoClienteId, setEditandoClienteId] = useState(null);
 
-  // Clave secreta para entrar a admin
+  // ESTADOS GALERÍA (Se añade videoUrl)
+  const galeriaInicial = { slug: 'institucional', titulo: '', orden: 1, imagenUrl: '', videoUrl: '' };
+  const [formGaleria, setFormGaleria] = useState(galeriaInicial);
+  const [cargandoGaleria, setCargandoGaleria] = useState(false);
+  const [listaGaleria, setListaGaleria] = useState([]);
+  const [editandoFotoId, setEditandoFotoId] = useState(null);
+
+  // CARGAR DATOS
+  const cargarDatos = async () => {
+    try {
+      const clientesSnapshot = await getDocs(collection(db, "clientes"));
+      setListaClientes(clientesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+      const galeriaSnapshot = await getDocs(collection(db, "galerias"));
+      let fotosCargadas = galeriaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      fotosCargadas.sort((a, b) => Number(a.orden) - Number(b.orden));
+      setListaGaleria(fotosCargadas);
+    } catch (error) {
+      console.error("Error al cargar datos:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (acceso) cargarDatos();
+  }, [acceso]);
+
+  // AUTO-CALCULAR ORDEN
+  useEffect(() => {
+    if (!editandoFotoId) {
+      const fotosCategoria = listaGaleria.filter(foto => foto.slug === formGaleria.slug);
+      const siguienteOrden = fotosCategoria.length > 0 
+        ? Math.max(...fotosCategoria.map(f => Number(f.orden) || 0)) + 1 
+        : 1;
+      setFormGaleria(prev => ({ ...prev, orden: siguienteOrden }));
+    }
+  }, [formGaleria.slug, listaGaleria, editandoFotoId]);
+
+  // LOGIN
   const handleLoginAdmin = (e) => {
     e.preventDefault();
     if (passAdmin === 'f/#7B301g}CN') {
@@ -30,146 +64,239 @@ export default function AdminPage() {
     }
   };
 
-  const handleSubmit = async (e) => {
+  // LÓGICA CLIENTES
+  const handleSubmitCliente = async (e) => {
     e.preventDefault();
-    setCargando(true);
+    setCargandoCliente(true);
     try {
-      await addDoc(collection(db, "clientes"), {
-        ...form,
-        createdAt: new Date()
-      });
-      alert('¡Cliente guardado exitosamente en la nube!');
-      setForm({ nombreCliente: '', password: '', tipo: '', fecha: '', previewImage: '', driveLink: '' });
+      if (editandoClienteId) {
+        await updateDoc(doc(db, "clientes", editandoClienteId), { ...formCliente });
+        alert('¡Cliente actualizado correctamente!');
+        setEditandoClienteId(null);
+      } else {
+        await addDoc(collection(db, "clientes"), { ...formCliente, createdAt: new Date() });
+        alert('¡Cliente registrado en la nube!');
+      }
+      setFormCliente(clienteInicial);
+      cargarDatos();
     } catch (error) {
-      console.error("Error al guardar: ", error);
       alert('Hubo un error al guardar el cliente.');
     } finally {
-      setCargando(false);
+      setCargandoCliente(false);
     }
   };
 
+  const eliminarCliente = async (id) => {
+    if (window.confirm("¿Estás seguro de eliminar este cliente? Esta acción no se puede deshacer.")) {
+      await deleteDoc(doc(db, "clientes", id));
+      cargarDatos();
+    }
+  };
+
+  const prepararEdicionCliente = (cliente) => {
+    setEditandoClienteId(cliente.id);
+    setFormCliente(cliente);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // LÓGICA GALERÍA
+  const handleSubmitGaleria = async (e) => {
+    e.preventDefault();
+    setCargandoGaleria(true);
+    try {
+      // Limpiar videoUrl si está vacío o tiene solo espacios
+      const cleanVideoUrl = formGaleria.videoUrl?.trim() || "";
+      const dataToSave = { 
+        ...formGaleria, 
+        orden: Number(formGaleria.orden) || 1,
+        videoUrl: cleanVideoUrl
+      };
+
+      if (editandoFotoId) {
+        await updateDoc(doc(db, "galerias", editandoFotoId), dataToSave);
+        alert('¡Contenido actualizado correctamente!');
+        setEditandoFotoId(null);
+      } else {
+        await addDoc(collection(db, "galerias"), { ...dataToSave, createdAt: new Date() });
+        alert('¡Contenido agregado al portafolio!');
+      }
+      
+      setFormGaleria({ ...galeriaInicial, slug: formGaleria.slug }); 
+      cargarDatos();
+    } catch (error) {
+      alert('Hubo un error al subir el archivo.');
+    } finally {
+      setCargandoGaleria(false);
+    }
+  };
+
+  const eliminarFoto = async (id) => {
+    if (window.confirm("¿Seguro de borrar este elemento de la web?")) {
+      await deleteDoc(doc(db, "galerias", id));
+      cargarDatos();
+    }
+  };
+
+  const prepararEdicionFoto = (foto) => {
+    setEditandoFotoId(foto.id);
+    // Asegurarse de que videoUrl exista en el form aunque venga de datos viejos
+    setFormGaleria({ ...foto, videoUrl: foto.videoUrl || '' });
+    window.scrollTo({ top: 500, behavior: 'smooth' });
+  };
+
+  // UI LOGIN
   if (!acceso) {
     return (
       <div className="min-h-screen df-bg flex items-center justify-center p-6 relative">
-        <Link href="/" className="absolute top-8 left-8 flex items-center gap-2 text-sm df-muted hover:df-text transition-all">
-          <ArrowLeft size={16} /> Volver al sitio
-        </Link>
+        <Link href="/" className="absolute top-8 left-8 flex items-center gap-2 text-sm df-muted hover:df-text transition-all"><ArrowLeft size={16} /> Volver al sitio</Link>
         <form onSubmit={handleLoginAdmin} className="df-card p-8 rounded-3xl border df-border w-full max-w-md shadow-2xl text-center">
           <ShieldCheck className="w-12 h-12 text-amber-600 mx-auto mb-4" />
           <h1 className="text-2xl font-bold df-text mb-2">Panel Administrativo</h1>
           <p className="df-muted text-sm mb-6">Ingresa tu clave de administración.</p>
-          <input 
-            type="password" 
-            value={passAdmin}
-            onChange={(e) => setPassAdmin(e.target.value)}
-            className="w-full df-card border df-border rounded-xl px-4 py-3 mb-4 text-center font-bold tracking-widest text-sm outline-none focus:border-amber-600"
-            placeholder="Clave de admin"
-            required
-          />
-          <button type="submit" className="w-full bg-amber-600 text-white font-bold py-3.5 rounded-xl hover:bg-amber-700 transition-all cursor-pointer text-sm">
-            Entrar al Panel
-          </button>
+          <input type="password" value={passAdmin} onChange={(e) => setPassAdmin(e.target.value)} className="w-full df-card border df-border rounded-xl px-4 py-3 mb-4 text-center font-bold tracking-widest text-sm outline-none focus:border-amber-600" placeholder="Clave de admin" required />
+          <button type="submit" className="w-full bg-amber-600 text-white font-bold py-3.5 rounded-xl hover:bg-amber-700 transition-all cursor-pointer text-sm">Entrar al Panel</button>
         </form>
       </div>
     );
   }
 
+  // UI ADMIN
   return (
     <div className="min-h-screen df-bg py-16 px-6">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
+      <div className="max-w-5xl mx-auto space-y-12">
+        <div className="flex justify-between items-center">
           <div>
-            <span className="text-xs uppercase tracking-widest font-bold text-amber-600">Gestión</span>
-            <h1 className="text-3xl font-black df-text mt-1">Nuevo Cliente</h1>
+            <span className="text-xs uppercase tracking-widest font-bold text-amber-600">Gestión General</span>
+            <h1 className="text-3xl font-black df-text mt-1">Panel de Control</h1>
           </div>
-          <Link href="/" className="text-sm df-muted hover:df-text flex items-center gap-2">
-            <ArrowLeft size={16} /> Ver Web
-          </Link>
+          <div className="flex items-center gap-4">
+            <button onClick={cargarDatos} className="text-sm df-muted hover:text-amber-500 flex items-center gap-2" title="Refrescar Datos"><RefreshCw size={16} /> Actualizar</button>
+            <Link href="/" className="text-sm df-muted hover:df-text flex items-center gap-2 ml-4 border-l df-border pl-4"><ArrowLeft size={16} /> Ver Web</Link>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="df-card border df-border p-8 rounded-3xl shadow-xl space-y-4">
-          <div>
-            <label className="text-xs font-bold df-muted mb-1 block">Nombre de los Clientes (Ej. Ana & Carlos)</label>
-            <input 
-              type="text" 
-              value={form.nombreCliente}
-              onChange={e => setForm({...form, nombreCliente: e.target.value})}
-              required
-              className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm outline-none focus:border-amber-600 df-text"
-              placeholder="Ej. Ana & Carlos"
-            />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="space-y-8">
+            
+            {/* FORMULARIO CLIENTES */}
+            <div className="df-card border df-border p-8 rounded-3xl shadow-xl transition-all">
+              <div className="mb-6 flex justify-between items-center">
+                <div><span className="text-xs uppercase tracking-widest font-bold text-amber-600">Acceso Privado</span><h2 className="text-xl font-bold df-text mt-1">{editandoClienteId ? 'Editar Cliente' : 'Registrar Cliente'}</h2></div>
+                {editandoClienteId && (<button onClick={() => { setEditandoClienteId(null); setFormCliente(clienteInicial); }} className="p-2 bg-red-500/10 text-red-500 rounded-full hover:bg-red-500/20"><X size={16} /></button>)}
+              </div>
+              <form onSubmit={handleSubmitCliente} className="space-y-4">
+                <input type="text" value={formCliente.nombreCliente} onChange={e => setFormCliente({...formCliente, nombreCliente: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Nombre (Ej. Ana & Carlos)" />
+                <input type="text" value={formCliente.password} onChange={e => setFormCliente({...formCliente, password: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Contraseña (Ej. ana2026)" />
+                <input type="text" value={formCliente.tipo} onChange={e => setFormCliente({...formCliente, tipo: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Tipo de Evento" />
+                <input type="text" value={formCliente.fecha} onChange={e => setFormCliente({...formCliente, fecha: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Fecha (Ej. 12 Agosto)" />
+                <input type="url" value={formCliente.previewImage} onChange={e => setFormCliente({...formCliente, previewImage: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="URL Foto de Portada" />
+                <input type="url" value={formCliente.driveLink} onChange={e => setFormCliente({...formCliente, driveLink: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Link de Google Drive" />
+                <button type="submit" disabled={cargandoCliente} className={`w-full text-white font-bold py-4 rounded-xl shadow-md flex items-center justify-center gap-2 mt-6 text-sm ${editandoClienteId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
+                  {editandoClienteId ? <Edit2 size={18} /> : <PlusCircle size={18} />} {cargandoCliente ? 'Guardando...' : (editandoClienteId ? 'Actualizar Cliente' : 'Registrar Cliente')}
+                </button>
+              </form>
+            </div>
+
+            {/* FORMULARIO GALERÍA (CON OPCIÓN DE VIDEO) */}
+            <div className="df-card border df-border p-8 rounded-3xl shadow-xl transition-all">
+              <div className="mb-6 flex justify-between items-center">
+                <div><span className="text-xs uppercase tracking-widest font-bold text-amber-600">Portafolio Web</span><h2 className="text-xl font-bold df-text mt-1">{editandoFotoId ? 'Editar Contenido' : 'Subir Contenido'}</h2></div>
+                {editandoFotoId && (<button onClick={() => { setEditandoFotoId(null); setFormGaleria({ ...galeriaInicial, slug: formGaleria.slug }); }} className="p-2 bg-red-500/10 text-red-500 rounded-full hover:bg-red-500/20"><X size={16} /></button>)}
+              </div>
+              <form onSubmit={handleSubmitGaleria} className="space-y-4">
+                
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-amber-600 ml-1">Categoría</label>
+                  <select value={formGaleria.slug} onChange={e => setFormGaleria({...formGaleria, slug: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none">
+                    <option value="institucional">Eventos Institucionales</option>
+                    <option value="parejas">Sesión de Fotos de Pareja</option>
+                    <option value="publicidad">Publicidad para Negocios</option>
+                    <option value="revelacion-genero">Revelación de Género</option>
+                    <option value="fiestas-patronales">Fiestas Patronales</option>
+                    <option value="videoclips">Videoclips y Grupos de Baile</option>
+                    <option value="invitaciones-virtuales">Invitaciones Virtuales</option>
+                    <option value="personal">Fotos y Videos Personales</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-bold uppercase df-muted ml-1">Título</label>
+                    <input type="text" value={formGaleria.titulo} onChange={e => setFormGaleria({...formGaleria, titulo: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Ej. Spot Comercial" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase df-muted ml-1">Orden</label>
+                    <input type="number" value={formGaleria.orden} onChange={e => setFormGaleria({...formGaleria, orden: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none text-center" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold uppercase df-muted ml-1 flex items-center gap-1"><ImageIcon size={12}/> Foto Portada (Obligatorio)</label>
+                  <input type="url" value={formGaleria.imagenUrl} onChange={e => setFormGaleria({...formGaleria, imagenUrl: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Enlace directo de la miniatura" />
+                </div>
+
+                <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-500/5">
+                  <label className="text-[10px] font-bold uppercase text-blue-500 ml-1 flex items-center gap-1 mb-1"><Video size={12}/> Link de Video (Opcional)</label>
+                  <input type="url" value={formGaleria.videoUrl} onChange={e => setFormGaleria({...formGaleria, videoUrl: e.target.value})} className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 df-text outline-none" placeholder="Enlace de YouTube o Drive..." />
+                  <p className="text-[10px] text-blue-500/70 mt-2 leading-tight">Si dejas esto en blanco, se subirá como fotografía normal. Si pones un link, la web le agregará un botón de Play (▶).</p>
+                </div>
+
+                <button type="submit" disabled={cargandoGaleria} className={`w-full text-white font-bold py-4 rounded-xl shadow-md flex items-center justify-center gap-2 mt-6 text-sm ${editandoFotoId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
+                  {editandoFotoId ? <Edit2 size={18} /> : (formGaleria.videoUrl ? <Video size={18} /> : <ImageIcon size={18} />)} 
+                  {cargandoGaleria ? 'Procesando...' : (editandoFotoId ? 'Actualizar Contenido' : (formGaleria.videoUrl ? 'Subir Video' : 'Subir Foto'))}
+                </button>
+              </form>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-bold df-muted mb-1 block">Contraseña del Cliente</label>
-              <input 
-                type="text" 
-                value={form.password}
-                onChange={e => setForm({...form, password: e.target.value})}
-                required
-                className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm outline-none focus:border-amber-600 df-text"
-                placeholder="Ej. ana2026"
-              />
+          <div className="space-y-8">
+            {/* LISTA CLIENTES */}
+            <div className="df-card border df-border p-6 rounded-3xl shadow-md">
+              <h3 className="font-bold df-text mb-4">Gestión de Clientes ({listaClientes.length})</h3>
+              <div className="max-h-[350px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+                {listaClientes.length === 0 && <p className="text-xs df-muted">No hay clientes registrados.</p>}
+                {listaClientes.map(cliente => (
+                  <div key={cliente.id} className="flex justify-between items-center p-3 df-bg rounded-xl border df-border group hover:border-amber-500/50 transition-colors">
+                    <div>
+                      <p className="text-sm font-bold df-text line-clamp-1">{cliente.nombreCliente}</p>
+                      <p className="text-xs df-muted">Pass: {cliente.password}</p>
+                    </div>
+                    <div className="flex gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => prepararEdicionCliente(cliente)} className="p-1.5 bg-blue-500/10 text-blue-500 rounded-md hover:bg-blue-500 hover:text-white transition-colors" title="Editar"><Edit2 size={14}/></button>
+                      <button onClick={() => eliminarCliente(cliente.id)} className="p-1.5 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-colors" title="Eliminar"><Trash2 size={14}/></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div>
-              <label className="text-xs font-bold df-muted mb-1 block">Tipo de Evento</label>
-              <input 
-                type="text" 
-                value={form.tipo}
-                onChange={e => setForm({...form, tipo: e.target.value})}
-                required
-                className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm outline-none focus:border-amber-600 df-text"
-                placeholder="Ej. Sesión de Boda"
-              />
+
+            {/* LISTA GALERÍA */}
+            <div className="df-card border df-border p-6 rounded-3xl shadow-md">
+              <h3 className="font-bold df-text mb-4">Portafolio Web ({listaGaleria.length})</h3>
+              <div className="max-h-[500px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+                {listaGaleria.length === 0 && <p className="text-xs df-muted">No hay contenido en la galería.</p>}
+                {listaGaleria.map(foto => (
+                  <div key={foto.id} className="flex justify-between items-center p-3 df-bg rounded-xl border df-border group hover:border-amber-500/50 transition-colors">
+                    <div className="flex items-center gap-3 overflow-hidden w-full">
+                      <div className="w-12 h-12 rounded-lg bg-black overflow-hidden flex-shrink-0 relative border df-border">
+                        <img src={foto.imagenUrl} alt="miniatura" className="w-full h-full object-cover opacity-80" />
+                        {foto.videoUrl && <div className="absolute inset-0 flex items-center justify-center"><Video size={14} className="text-white drop-shadow-md"/></div>}
+                      </div>
+                      <div className="flex-1 pr-2">
+                        <p className="text-sm font-bold df-text line-clamp-1">{foto.titulo || 'Sin título'}</p>
+                        <p className="text-[10px] font-bold text-amber-600 tracking-wider">/{foto.slug} <span className="df-muted font-normal">(Orden: {foto.orden})</span></p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col md:flex-row gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => prepararEdicionFoto(foto)} className="p-1.5 bg-blue-500/10 text-blue-500 rounded-md hover:bg-blue-500 hover:text-white transition-colors" title="Editar"><Edit2 size={14}/></button>
+                      <button onClick={() => eliminarFoto(foto.id)} className="p-1.5 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-colors" title="Eliminar"><Trash2 size={14}/></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-bold df-muted mb-1 block">Fecha del Evento</label>
-              <input 
-                type="text" 
-                value={form.fecha}
-                onChange={e => setForm({...form, fecha: e.target.value})}
-                required
-                className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm outline-none focus:border-amber-600 df-text"
-                placeholder="Ej. 12 de Agosto, 2026"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-bold df-muted mb-1 block">Link de Imagen de Portada</label>
-              <input 
-                type="url" 
-                value={form.previewImage}
-                onChange={e => setForm({...form, previewImage: e.target.value})}
-                required
-                className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm outline-none focus:border-amber-600 df-text"
-                placeholder="https://imagen.com/foto.jpg"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-bold df-muted mb-1 block">Link de la Carpeta de Google Drive</label>
-            <input 
-              type="url" 
-              value={form.driveLink}
-              onChange={e => setForm({...form, driveLink: e.target.value})}
-              required
-              className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm outline-none focus:border-amber-600 df-text"
-              placeholder="https://drive.google.com/drive/folders/..."
-            />
-          </div>
-
-          <button 
-            type="submit" 
-            disabled={cargando}
-            className="w-full bg-amber-600 text-white font-bold py-4 rounded-xl hover:bg-amber-700 transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer mt-6 text-sm"
-          >
-            <PlusCircle size={18} /> {cargando ? 'Guardando...' : 'Registrar Cliente en la Nube'}
-          </button>
-        </form>
+        </div>
       </div>
     </div>
   );
