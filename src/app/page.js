@@ -51,32 +51,29 @@ function CategoryCard({ trabajo }) {
       onMouseLeave={handleMouseLeave}
       className="card-3d-spotlight group relative w-full h-[320px] df-card rounded-3xl overflow-hidden border df-border shadow-sm cursor-pointer flex flex-col justify-end p-6 transition-all duration-300 block"
     >
-      {/* 1. Imagen de fondo principal OPTIMIZADA */}
-      <Image 
+      {/* 1. Imagen de fondo principal */}
+      <img 
         src={trabajo.image} 
         alt={trabajo.titulo} 
-        fill
-        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-        className="object-cover transition-transform duration-700 group-hover:scale-110 z-0"
-        priority={trabajo.id <= 3} // Carga rápido las 3 primeras, el resto espera al scroll
+        className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 z-0"
       />
 
-      {/* 2. Gradiente inferior para legibilidad del texto */}
+      {/* 2. Gradiente inferior para legibilidad del texto (Siempre visible para asegurar contraste) */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none" />
 
       {/* 3. Capa de color acentuado */}
       <div className={`absolute inset-0 ${trabajo.accent || 'bg-amber-600'} opacity-20 group-hover:opacity-10 transition-all duration-700 ease-out z-10 pointer-events-none`} />
 
-      {/* 4. Efecto Spotlight del cursor */}
+      {/* 4. Efecto Spotlight del cursor (Solo visible en PC) */}
       <div 
-        className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10"
+        className="absolute inset-0 pointer-events-none opacity-0 md:group-hover:opacity-100 transition-opacity duration-300 z-10"
         style={{
           background: 'radial-gradient(280px circle at var(--mouse-x) var(--mouse-y), rgba(217, 119, 6, 0.25), transparent 80%)'
         }}
       />
 
-      {/* 5. Botón flotante */}
-      <div className="absolute top-4 right-4 w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm transform translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 z-20">
+      {/* 5. Botón flotante: En celulares se muestra siempre con opacidad parcial, y en PC hace efecto hover */}
+      <div className="absolute top-4 right-4 w-10 h-10 bg-white/20 md:bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm transform md:translate-y-2 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 transition-all duration-300 z-20">
         <ArrowRight size={18} />
       </div>
 
