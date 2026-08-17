@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Camera, Video, Film, ArrowLeft, Send, Play, X, Eye, ArrowUp, Sun, Moon, MapPin, Smartphone } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 const infoCategorias = {
   'institucional': {

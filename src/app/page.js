@@ -7,6 +7,7 @@ import {
   ChevronDown, Sun, Moon, Clapperboard 
 } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 
 // ==========================================
@@ -50,11 +51,14 @@ function CategoryCard({ trabajo }) {
       onMouseLeave={handleMouseLeave}
       className="card-3d-spotlight group relative w-full h-[320px] df-card rounded-3xl overflow-hidden border df-border shadow-sm cursor-pointer flex flex-col justify-end p-6 transition-all duration-300 block"
     >
-      {/* 1. Imagen de fondo principal */}
-      <img 
+      {/* 1. Imagen de fondo principal OPTIMIZADA */}
+      <Image 
         src={trabajo.image} 
         alt={trabajo.titulo} 
-        className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 z-0"
+        fill
+        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+        className="object-cover transition-transform duration-700 group-hover:scale-110 z-0"
+        priority={trabajo.id <= 3} // Carga rápido las 3 primeras, el resto espera al scroll
       />
 
       {/* 2. Gradiente inferior para legibilidad del texto */}
