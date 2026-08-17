@@ -97,11 +97,11 @@ body {
   background-repeat: repeat;
   /* Ancho de 300px y alto automático para que mantenga su proporción exacta y no se deforme */
   background-size: 960px auto; 
-  opacity: 0.1;
+  opacity: 0.04;
 }
 
 .dark .hero-pattern {
-  opacity: 0.1;
+  opacity: 0.04;
 }
 
 /* Control de visibilidad de los logos según el modo oscuro */
