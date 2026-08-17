@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Camera, Video, Film, ArrowLeft, Send, Play, X, Eye, ArrowUp, Sun, Moon, MapPin, Smartphone } from 'lucide-react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { db } from '@/lib/firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 const infoCategorias = {
   'institucional': {
@@ -84,7 +85,11 @@ export default function SlugClient({ slug }) {
   const [mounted, setMounted] = useState(false);
   const data = infoCategorias[slug];
 
-  // Estados del formulario (iniciando con el valor de la categoría actual si existe)
+  // Estados para las fotos dinámicas de Firebase
+  const [galeriaFotos, setGaleriaFotos] = useState([]);
+  const [cargandoFotos, setCargandoFotos] = useState(true);
+
+  // Estados del formulario de cotización
   const [nombre, setNombre] = useState('');
   const [tipoEvento, setTipoEvento] = useState(data ? data.formulario : '');
   const [mensaje, setMensaje] = useState('');
@@ -92,14 +97,34 @@ export default function SlugClient({ slug }) {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [trabajoSeleccionado, setTrabajoSeleccionado] = useState(null);
   const [showTopBtn, setShowTopBtn] = useState(false);
-  
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     const saved = localStorage.getItem('isDarkMode') === 'true';
     setIsDarkMode(saved);
-  }, []);
+
+    // Función para traer las fotos de esta categoría desde Firebase
+    const fetchGaleria = async () => {
+      try {
+        const q = query(collection(db, "galerias"), where("slug", "==", slug));
+        const querySnapshot = await getDocs(q);
+        const fotosList = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setGaleriaFotos(fotosList);
+      } catch (error) {
+        console.error("Error al cargar la galería desde Firebase:", error);
+      } finally {
+        setCargandoFotos(false);
+      }
+    };
+
+    if (slug) {
+      fetchGaleria();
+    }
+  }, [slug]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -116,44 +141,17 @@ export default function SlugClient({ slug }) {
 
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 400) {
-        setShowTopBtn(true);
-      } else {
-        setShowTopBtn(false);
-      }
+      setShowTopBtn(window.scrollY > 400);
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-  };
+  const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
 
   const goToTop = (e) => {
     if (e) e.preventDefault();
-    const startPosition = window.pageYOffset;
-    const duration = 1000;
-    let startTime = null;
-
-    const animation = (currentTime) => {
-      if (startTime === null) startTime = currentTime;
-      const timeElapsed = currentTime - startTime;
-      const run = ease(timeElapsed, startPosition, -startPosition, duration);
-      window.scrollTo(0, run);
-      if (timeElapsed < duration) {
-        requestAnimationFrame(animation);
-      }
-    };
-
-    const ease = (t, b, c, d) => {
-      t /= d / 2;
-      if (t < 1) return c / 2 * t * t * t + b;
-      t -= 2;
-      return c / 2 * (t * t * t + 2) + b;
-    };
-
-    requestAnimationFrame(animation);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const abrirModal = (item) => {
@@ -174,7 +172,6 @@ export default function SlugClient({ slug }) {
     window.open(url, '_blank');
   };
 
-  // Si se ingresa a una URL que no existe en nuestro objeto
   if (!data) {
     return (
       <div className="min-h-screen df-bg df-text flex flex-col items-center justify-center p-6 text-center">
@@ -228,63 +225,72 @@ export default function SlugClient({ slug }) {
         </p>
       </header>
 
-      {/* GALERÍA CON ACTIVACIÓN DE VENTANA EMERGENTE */}
+      {/* GALERÍA DINÁMICA DESDE FIREBASE */}
       <section className="py-12 px-6 md:px-12 max-w-6xl mx-auto">
-        <h2 className="text-2xl font-bold mb-8 df-text">Galería y Muestras</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((item) => (
-            <div 
-              key={item} 
-              onClick={() => abrirModal({ id: item, titulo: `${data.titulo} - Muestra ${item}` })}
-              className="group relative aspect-video df-card rounded-2xl overflow-hidden border df-border shadow-xs cursor-pointer flex items-center justify-center transition-all duration-500 hover:shadow-2xl hover:-translate-y-2"
-            >
-              <div className={`absolute inset-0 ${data.accent} opacity-75 group-hover:scale-105 group-hover:opacity-40 transition-all duration-700`} />
-              <div className="w-12 h-12 df-bg df-text rounded-full flex items-center justify-center z-10 transform scale-0 group-hover:scale-100 transition-transform duration-300 shadow-lg border df-border">
-                <Eye size={20} />
-              </div>
-              
-              <div className="absolute bottom-4 left-4 z-20">
-                <span className={`text-[10px] uppercase tracking-wider font-bold text-white px-2.5 py-1 rounded-md shadow-xs ${data.colorText.replace('text-', 'bg-')}`}>
-                  Ampliar
-                </span>
-                <h3 className="text-base font-bold mt-2 df-text">Producción {item}</h3>
-              </div>
-            </div>
-          ))}
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-2xl font-bold df-text">Galería Fotográfica</h2>
+          <span className="text-xs df-muted uppercase tracking-wider">Alta Resolución</span>
         </div>
+
+        {cargandoFotos ? (
+          <div className="text-center py-12 df-muted text-sm">Cargando galería desde la nube...</div>
+        ) : galeriaFotos.length === 0 ? (
+          <div className="df-card border df-border p-12 rounded-3xl text-center">
+            <p className="df-muted text-sm">Pronto agregaremos muestras fotográficas exclusivas para esta categoría.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {galeriaFotos.map((foto) => (
+              <div 
+                key={foto.id} 
+                onClick={() => abrirModal(foto)}
+                className="group relative h-[280px] df-card rounded-2xl overflow-hidden border df-border shadow-xs cursor-pointer flex items-center justify-center transition-all duration-500 hover:shadow-2xl hover:-translate-y-2"
+              >
+                <img 
+                  src={foto.imagenUrl} 
+                  alt={foto.titulo} 
+                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 z-0"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60 group-hover:opacity-80 transition-opacity duration-300 z-10" />
+                <div className="absolute top-4 right-4 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <Eye size={18} />
+                </div>
+                <div className="absolute bottom-4 left-4 right-4 z-20">
+                  <span className={`text-[10px] uppercase tracking-wider font-bold text-white px-2.5 py-1 rounded-md shadow-xs ${data.colorText.replace('text-', 'bg-')}`}>
+                    {data.titulo}
+                  </span>
+                  <h3 className="text-base font-bold mt-2 text-white drop-shadow-md">
+                    {foto.titulo}
+                  </h3>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
-      {/* VENTANA EMERGENTE (MODAL) ANIMADA */}
+      {/* VENTANA EMERGENTE (MODAL) PARA AMPLIAR FOTO */}
       {modalAbierto && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-          <div className="df-card border df-border rounded-3xl max-w-3xl w-full p-6 md:p-8 relative shadow-2xl animate-scale-up">
-            
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+          <div className="df-card border df-border rounded-3xl max-w-3xl w-full p-6 md:p-8 relative shadow-2xl">
             <button 
               onClick={cerrarModal}
               className={`absolute top-6 right-6 df-bg df-text p-2.5 rounded-full transition-all shadow-xs cursor-pointer hover:text-white ${data.colorText.replace('text-', 'hover:bg-')}`}
-              aria-label="Cerrar ventana"
             >
               <X size={20} />
             </button>
-
-            <span className={`text-xs uppercase tracking-widest font-bold ${data.colorText} ${data.accent} px-3 py-1 rounded-md inline-block mb-3`}>
-              {data.titulo}
-            </span>
             <h3 className="text-2xl font-bold df-text mb-4">
               {trabajoSeleccionado?.titulo}
             </h3>
-
-            <div className="aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center text-white relative shadow-inner mb-6">
-              <div className="absolute inset-0 bg-gradient-to-tr from-slate-900 to-slate-800 opacity-90" />
-              <div className="relative z-10 text-center p-6">
-                <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-md">
-                  <Play size={28} className="text-white ml-1" />
-                </div>
-                <p className="text-sm font-medium text-white/80">Vista previa en alta resolución de Deluces Films</p>
-              </div>
+            <div className="aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center relative shadow-inner mb-6">
+              <img 
+                src={trabajoSeleccionado?.imagenUrl} 
+                alt={trabajoSeleccionado?.titulo} 
+                className="w-full h-full object-contain"
+              />
             </div>
-
-            <div className="flex flex-col sm:flex-row justify-end gap-3">
+            <div className="flex justify-end gap-3">
               <button 
                 onClick={cerrarModal}
                 className="px-6 py-3 rounded-xl border df-border text-sm font-bold df-muted hover:df-text transition-colors cursor-pointer"
@@ -294,12 +300,11 @@ export default function SlugClient({ slug }) {
               <a 
                 href="#contacto-servicio" 
                 onClick={cerrarModal}
-                className={`px-6 py-3 rounded-xl text-white text-sm font-bold transition-all shadow-md text-center ${data.colorText.replace('text-', 'bg-')} opacity-90 hover:opacity-100`}
+                className={`px-6 py-3 rounded-xl text-white text-sm font-bold transition-all shadow-md text-center ${data.colorText.replace('text-', 'bg-')}`}
               >
                 Cotizar proyecto similar
               </a>
             </div>
-
           </div>
         </div>
       )}
@@ -313,7 +318,6 @@ export default function SlugClient({ slug }) {
             <p className="df-muted mb-10 text-sm leading-relaxed">
               Completa el formulario y te responderemos por WhatsApp con disponibilidad, opciones de paquetes y precios exactos para tu evento.
             </p>
-            
             <div className="space-y-6">
               <div className="flex items-center gap-4 transition-transform duration-300 hover:translate-x-1">
                 <div className="w-12 h-12 df-bg rounded-xl flex items-center justify-center df-text shadow-xs"><Smartphone size={20}/></div>
@@ -321,17 +325,14 @@ export default function SlugClient({ slug }) {
               </div>
               <div className="flex items-center gap-4 transition-transform duration-300 hover:translate-x-1">
                 <div className="w-12 h-12 df-bg rounded-xl flex items-center justify-center df-text shadow-xs"><MapPin size={20}/></div>
-                <div><p className="text-xs df-muted">Ubicación de Cobertura</p><p className="font-semibold df-text">Perú</p></div>
+                <div><p className="text-xs df-muted">Ubicación de Cobertura</p><p className="font-semibold df-text">Cerro de Pasco y todo el Perú</p></div>
               </div>
             </div>
           </div>
 
           <div className="df-bg p-8 rounded-2xl border df-border shadow-xl">
             <h2 className="text-xl font-bold mb-6 df-text">Cotiza tu servicio de {data.titulo}</h2>
-            
             <form onSubmit={handleWhatsAppSubmit} className="space-y-4">
-              
-              {/* Selector de Tipo de Evento */}
               <div>
                 <label className="text-xs font-bold df-muted mb-1.5 block">Tipo de Evento</label>
                 <select 
@@ -352,7 +353,6 @@ export default function SlugClient({ slug }) {
                 </select>
               </div>
 
-              {/* Nombre */}
               <div>
                 <label className="text-xs font-bold df-muted mb-1.5 block">Tu Nombre / Empresa</label>
                 <input 
@@ -365,7 +365,6 @@ export default function SlugClient({ slug }) {
                 />
               </div>
               
-              {/* Mensaje */}
               <div>
                 <label className="text-xs font-bold df-muted mb-1.5 block">Detalles del proyecto</label>
                 <textarea 
@@ -386,12 +385,11 @@ export default function SlugClient({ slug }) {
         </div>
       </section>
 
-      {/* BOTÓN "VOLVER ARRIBA" */}
+      {/* BOTÓN VOLVER ARRIBA */}
       {showTopBtn && (
         <button 
           onClick={goToTop}
           className="fixed bottom-24 right-6 z-40 df-card border df-border df-text p-3.5 rounded-full shadow-lg hover:bg-amber-600 hover:text-white transition-all duration-300 animate-fade-in flex items-center justify-center cursor-pointer"
-          aria-label="Volver arriba"
         >
           <ArrowUp size={20} />
         </button>
@@ -403,7 +401,6 @@ export default function SlugClient({ slug }) {
         target="_blank" 
         rel="noopener noreferrer"
         className="fixed bottom-6 right-6 z-50 bg-[#25D366] text-white p-3.5 rounded-full shadow-2xl whatsapp-pulse transition-all duration-300 flex items-center justify-center group cursor-pointer"
-        aria-label="Escríbenos por WhatsApp"
       >
         <svg width="28" height="28" viewBox="0 0 24 24" fill="white" className="flex-shrink-0">
           <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448zM12.002 2.15c-5.436 0-9.851 4.415-9.853 9.852-.001 1.872.518 3.704 1.509 5.31l-1.004 3.673 3.766-.988c1.554.948 3.351 1.447 5.182 1.448 5.436 0 9.851-4.415 9.853-9.852.001-5.303-4.315-9.621-9.653-9.623zm5.367 13.916c-.225.635-1.309 1.181-1.801 1.259-.467.074-1.07.135-3.078-.696-2.613-1.088-4.316-3.76-4.448-3.935-.132-.176-1.066-1.417-1.066-2.703 0-1.286.669-1.916.907-2.174.238-.258.519-.323.691-.323.173 0 .346.001.498.008.161.008.379-.061.594.464.226.553.774 1.887.842 2.025.068.138.113.3.023.482-.09.183-.135.297-.27.458-.135.161-.284.36-.406.484-.135.138-.277.288-.12.56.157.272.698 1.155 1.499 1.871 1.033.921 1.904 1.206 2.176 1.344.272.138.432.115.592-.069.16-.184.686-.798.868-1.072.182-.274.364-.229.614-.138.25.092 1.586.748 1.856.884.27.135.45.203.516.315.066.113.066.653-.159 1.288z"/>
