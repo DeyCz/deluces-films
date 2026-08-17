@@ -1,10 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, Video, Film, CheckCircle2, MapPin, Mail, Smartphone, Send, Menu, X, ArrowRight, MessageCircle, ArrowUp, ChevronDown, Sun, Moon, Clapperboard, Sparkles } from 'lucide-react';
+import { 
+  Camera, Video, Film, CheckCircle2, MapPin, Mail, 
+  Smartphone, Send, Menu, X, ArrowRight, ArrowUp, 
+  ChevronDown, Sun, Moon, Clapperboard 
+} from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 
+// ==========================================
+// COMPONENTE DE TARJETA 3D
+// ==========================================
 function CategoryCard({ trabajo }) {
   const cardRef = useRef(null);
 
@@ -37,80 +44,218 @@ function CategoryCard({ trabajo }) {
 
   return (
     <Link 
-      href={trabajo.href}
+      href={trabajo.href || "#"}
       ref={cardRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      className="card-3d-spotlight group relative aspect-video df-card rounded-2xl overflow-hidden border df-border shadow-sm cursor-pointer flex flex-col justify-end p-6 transition-all duration-300 block relative"
+      className="card-3d-spotlight group relative w-full h-[320px] df-card rounded-3xl overflow-hidden border df-border shadow-sm cursor-pointer flex flex-col justify-end p-6 transition-all duration-300 block"
     >
+      {/* 1. Imagen de fondo principal */}
+      <img 
+        src={trabajo.image} 
+        alt={trabajo.titulo} 
+        className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 z-0"
+      />
+
+      {/* 2. Gradiente inferior para legibilidad del texto */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none" />
+
+      {/* 3. Capa de color acentuado */}
+      <div className={`absolute inset-0 ${trabajo.accent || 'bg-amber-600'} opacity-20 group-hover:opacity-10 transition-all duration-700 ease-out z-10 pointer-events-none`} />
+
+      {/* 4. Efecto Spotlight del cursor */}
       <div 
         className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10"
         style={{
-          background: 'radial-gradient(280px circle at var(--mouse-x) var(--mouse-y), rgba(217, 119, 6, 0.22), transparent 80%)'
+          background: 'radial-gradient(280px circle at var(--mouse-x) var(--mouse-y), rgba(217, 119, 6, 0.25), transparent 80%)'
         }}
       />
-      
-      <div className={`absolute inset-0 ${trabajo.accent} opacity-60 group-hover:opacity-30 transition-all duration-700 ease-out`} />
-      
-      <div className="absolute top-4 right-4 w-10 h-10 df-bg rounded-full flex items-center justify-center df-text shadow-sm transform translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 z-20">
+
+      {/* 5. Botón flotante */}
+      <div className="absolute top-4 right-4 w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm transform translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 z-20">
         <ArrowRight size={18} />
       </div>
 
+      {/* 6. Textos */}
       <div className="relative z-20">
-        <span className="text-[10px] uppercase tracking-wider font-bold text-amber-600 dark:text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/20 shadow-xs">
+        <span className="text-[10px] uppercase tracking-wider font-bold text-amber-400 bg-amber-500/20 px-2.5 py-1 rounded-md border border-amber-500/30 backdrop-blur-md">
           {trabajo.categoria}
         </span>
-        <h3 className="text-xl font-bold mt-3 leading-tight df-text drop-shadow-xs">
+        <h3 className="text-xl font-bold mt-3 leading-tight text-white drop-shadow-md">
           {trabajo.titulo}
         </h3>
-        <p className="text-xs df-muted mt-1 line-clamp-1">{trabajo.desc}</p>
+        <p className="text-xs text-gray-300 mt-1 line-clamp-1 drop-shadow-sm">
+          {trabajo.desc}
+        </p>
       </div>
     </Link>
   );
 }
 
+
+// ==========================================
+// ARREGLO ÚNICO DE DATOS (CON ENLACES CORREGIDOS)
+// ==========================================
+const categoriasTrabajos = [
+  {
+    id: 1,
+    titulo: "Eventos Institucionales",
+    categoria: "INSTITUCIONAL",
+    desc: "Cobertura corporativa y actos oficiales.",
+    href: "/institucional", // <--- Redirige a la página correspondiente
+    accent: "bg-blue-600",
+    image: "/institucional.jpg"
+  },
+  {
+    id: 2,
+    titulo: "Sesión de Fotos de Pareja",
+    categoria: "PAREJAS",
+    desc: "Complicidad y atardeceres al aire libre.",
+    href: "/parejas",
+    accent: "bg-amber-600",
+    image: "/pareja.jpg"
+  },
+  {
+    id: 3,
+    titulo: "Publicidad para Negocios",
+    categoria: "PUBLICIDAD",
+    desc: "Spots comerciales que potencian tu marca.",
+    href: "/publicidad",
+    accent: "bg-indigo-600",
+    image: "/publicidad.jpg"
+  },
+  {
+    id: 4,
+    titulo: "Revelación de Género",
+    categoria: "SOCIALES",
+    desc: "Emoción y momentos inolvidables en familia.",
+    href: "/revelacion-genero",
+    accent: "bg-purple-600",
+    image: "/revelacion.jpg"
+  },
+  {
+    id: 5,
+    titulo: "Fiestas Patronales",
+    categoria: "SOCIALES",
+    desc: "Tradición, color y alegría capturados en alta definición.",
+    href: "/fiestas-patronales",
+    accent: "bg-orange-600",
+    image: "/patronales.jpg"
+  },
+  {
+    id: 6,
+    titulo: "Videoclips y Grupos de Baile",
+    categoria: "VIDEOCLIPS",
+    desc: "Edición rítmica y estética musical profesional.",
+    href: "/videoclips",
+    accent: "bg-pink-600",
+    image: "/videoclips.jpg"
+  },
+  {
+    id: 7,
+    titulo: "Invitaciones Virtuales",
+    categoria: "VIDEOCLIPS",
+    desc: "Animaciones personalizadas para tus invitados.",
+    href: "/invitaciones-virtuales",
+    accent: "bg-rose-600",
+    image: "/invitaciones.jpg"
+  },
+  {
+    id: 8,
+    titulo: "Fotos y Videos Personales",
+    categoria: "PERSONAL",
+    desc: "Retratos individuales y cobertura íntima.",
+    href: "/personal",
+    accent: "bg-emerald-600",
+    image: "/personal.jpg"
+  }
+];
+
+
+const serviciosGenerales = [
+  {
+    titulo: "Fotografía Profesional",
+    desc: "Capturamos tus mejores momentos con imágenes nítidas, cuidando la luz y resaltando las emociones reales de cada instante.",
+    icono: Camera
+  },
+  {
+    titulo: "Filmación Cinematográfica",
+    desc: "Creamos videos de alta calidad que se ven y se sienten como una película, perfectos para contar tu historia.",
+    icono: Clapperboard
+  },
+  {
+    titulo: "Post-Producción & Edición",
+    desc: "Pulimos cada detalle de tus fotos y videos. Ajustamos colores, sonido y ritmo para que el resultado final sea impactante.",
+    icono: Film
+  }
+];
+
+const preguntasFrecuentes = [
+  {
+    pregunta: '¿Con cuánta anticipación debo separar la fecha para mi evento?',
+    respuesta: 'Recomendamos reservar con un mínimo de 2 a 3 meses de anticipación, especialmente para bodas, quince años y fechas de alta demanda.'
+  },
+  {
+    pregunta: '¿Realizan coberturas en todo el Perú?',
+    respuesta: 'Sí, cubrimos eventos, fiestas patronales y proyectos audiovisuales en todo el Perú. Los detalles de transporte se coordinan de forma personalizada.'
+  },
+  {
+    pregunta: '¿Cuál es el tiempo de entrega del material final?',
+    respuesta: 'Las fotografías editadas se entregan digitalmente en un plazo de 7 a 10 días hábiles. Los videos cinematográficos toman entre 15 y 25 días hábiles.'
+  },
+  {
+    pregunta: '¿Cómo se realiza el pago de los servicios?',
+    respuesta: 'La fecha se aparta con el 50% de adelanto mediante transferencia o billeteras digitales, y el 50% restante se cancela el mismo día de la cobertura.'
+  }
+];
+
+// ==========================================
+// COMPONENTE PRINCIPAL (HOME)
+// ==========================================
 export default function Home() {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [showTopBtn, setShowTopBtn] = useState(false);
   const [faqAbierto, setFaqAbierto] = useState(null);
-  
   const [mounted, setMounted] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
+  // Estados del Formulario
   const [nombre, setNombre] = useState('');
   const [tipoEvento, setTipoEvento] = useState('Eventos Institucionales');
   const [mensaje, setMensaje] = useState('');
 
+  // Efecto de inicialización de Tema Oscuro
   useEffect(() => {
     setMounted(true);
     const savedTheme = localStorage.getItem('isDarkMode') === 'true';
     setIsDarkMode(savedTheme);
+    document.documentElement.classList.toggle('dark', savedTheme);
   }, []);
 
+  // Efecto para aplicar clases del Tema
   useEffect(() => {
     if (!mounted) return;
     if (isDarkMode) {
       document.body.classList.add('dark-mode');
       localStorage.setItem('isDarkMode', 'true');
+      document.documentElement.classList.add('dark');
     } else {
       document.body.classList.remove('dark-mode');
       localStorage.setItem('isDarkMode', 'false');
+      document.documentElement.classList.remove('dark');
     }
   }, [isDarkMode, mounted]);
 
+  // Manejo de Scroll para el botón "Volver arriba"
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 400) {
-        setShowTopBtn(true);
-      } else {
-        setShowTopBtn(false);
-      }
+      setShowTopBtn(window.scrollY > 400);
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Función de scroll lento para secciones
+  // Funciones de navegación fluida (Scroll Lento)
   const scrollToSection = (e, targetId) => {
     e.preventDefault();
     setMenuAbierto(false);
@@ -129,9 +274,7 @@ export default function Home() {
       const timeElapsed = currentTime - startTime;
       const run = ease(timeElapsed, startPosition, distance, duration);
       window.scrollTo(0, run);
-      if (timeElapsed < duration) {
-        requestAnimationFrame(animation);
-      }
+      if (timeElapsed < duration) requestAnimationFrame(animation);
     };
 
     const ease = (t, b, c, d) => {
@@ -144,13 +287,12 @@ export default function Home() {
     requestAnimationFrame(animation);
   };
 
-  // Función de scroll lento para volver arriba (Logo y botón flotante)
   const goToTop = (e) => {
     if (e) e.preventDefault();
     setMenuAbierto(false);
 
     const startPosition = window.pageYOffset;
-    const duration = 1000; // 1 segundo exacto de desplazamiento lento
+    const duration = 1000;
     let startTime = null;
 
     const animation = (currentTime) => {
@@ -158,9 +300,7 @@ export default function Home() {
       const timeElapsed = currentTime - startTime;
       const run = ease(timeElapsed, startPosition, -startPosition, duration);
       window.scrollTo(0, run);
-      if (timeElapsed < duration) {
-        requestAnimationFrame(animation);
-      }
+      if (timeElapsed < duration) requestAnimationFrame(animation);
     };
 
     const ease = (t, b, c, d) => {
@@ -173,85 +313,39 @@ export default function Home() {
     requestAnimationFrame(animation);
   };
 
-  const toggleFaq = (index) => {
-    setFaqAbierto(faqAbierto === index ? null : index);
-  };
+  // Interacciones de UI
+  const toggleFaq = (index) => setFaqAbierto(faqAbierto === index ? null : index);
+  const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
 
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-  };
-
-  const categoriasTrabajos = [
-    { id: 1, categoria: 'Institucional', titulo: 'Eventos Institucionales', desc: 'Cobertura corporativa y actos oficiales.', accent: 'bg-blue-600/10', href: '/institucional' },
-    { id: 2, categoria: 'Parejas', titulo: 'Sesión de Fotos de Pareja', desc: 'Complicidad y atardeceres al aire libre.', accent: 'bg-amber-600/10', href: '/parejas' },
-    { id: 3, categoria: 'Publicidad', titulo: 'Publicidad para Negocios', desc: 'Spots comerciales que potencian tu marca.', accent: 'bg-blue-900/10', href: '/publicidad' },
-    { id: 4, categoria: 'Sociales', titulo: 'Revelación de Género', desc: 'Emoción y momentos inolvidables en familia.', accent: 'bg-purple-600/10', href: '/revelacion-genero' },
-    { id: 5, categoria: 'Sociales', titulo: 'Fiestas Patronales', desc: 'Tradición, color y alegría capturados en alta definición.', accent: 'bg-amber-600/10', href: '/fiestas-patronales' },
-    { id: 6, categoria: 'Videoclips', titulo: 'Videoclips y Grupos de Baile', desc: 'Edición rítmica y estética musical profesional.', accent: 'bg-blue-900/10', href: '/videoclips' },
-    { id: 7, categoria: 'Videoclips', titulo: 'Invitaciones Virtuales', desc: 'Animaciones personalizadas para tus invitados.', accent: 'bg-slate-600/10', href: '/invitaciones-virtuales' },
-    { id: 8, categoria: 'Personal', titulo: 'Fotos y Videos Personales', desc: 'Retratos individuales y cobertura íntima.', accent: 'bg-purple-600/10', href: '/personal' },
-  ];
-
-  const serviciosGenerales = [
-    {
-      titulo: "Fotografía Profesional",
-      desc: "Capturamos cada instante con ópticas de alta gama, cuidando la composición, iluminación natural y el detalle emocional.",
-      icono: Camera
-    },
-    {
-      titulo: "Filmación Cinematográfica",
-      desc: "Grabaciones en alta definición y 4K con equipos estabilizados, audio dedicado y un lenguaje visual de nivel cinematográfico.",
-      icono: Clapperboard
-    },
-    {
-      titulo: "Post-Producción & Edición",
-      desc: "Corrección de color avanzada, diseño sonoro envolvente y montaje rítmico para darle vida y dinamismo a tus proyectos.",
-      icono: Film
-    }
-  ];
-
-  const preguntasFrecuentes = [
-    {
-      pregunta: '¿Con cuánta anticipación debo separar la fecha para mi evento?',
-      respuesta: 'Recomendamos reservar con un mínimo de 2 a 3 meses de anticipación, especialmente para bodas, quince años y fechas de alta demanda.'
-    },
-    {
-      pregunta: '¿Realizan coberturas fuera de Lima?',
-      respuesta: 'Sí, cubrimos eventos, fiestas patronales y proyectos audiovisuales en todo el Perú. Los detalles de transporte se coordinan de forma personalizada.'
-    },
-    {
-      pregunta: '¿Cuál es el tiempo de entrega del material final?',
-      respuesta: 'Las fotografías editadas se entregan digitalmente en un plazo de 7 a 10 días hábiles. Los videos cinematográficos toman entre 15 y 25 días hábiles.'
-    },
-    {
-      pregunta: '¿Cómo se realiza el pago de los servicios?',
-      respuesta: 'La fecha se aparta con el 50% de adelanto mediante transferencia o billeteras digitales, y el 50% restante se cancela el mismo día de la cobertura.'
-    }
-  ];
-
+  // Envío del Formulario a WhatsApp
   const handleWhatsAppSubmit = (e) => {
     e.preventDefault();
-    const numeroWhatsApp = '51900000000';
-    const texto = `Hola, mi nombre es ${nombre}. Me interesa cotizar un servicio de "${tipoEvento}". Detalle: ${mensaje}`;
+    const numeroWhatsApp = '51967576214';
+    const texto = `Hola, mi nombre es ${nombre}. Me interesa cotizar un servicio de "${tipoEvento}". Detalles: ${mensaje}`;
     const url = `https://wa.me/${numeroWhatsApp}?text=${encodeURIComponent(texto)}`;
     window.open(url, '_blank');
   };
 
   return (
     <div className="min-h-screen df-text selection:bg-amber-600 selection:text-white font-sans overflow-x-hidden relative">
-      
       <div className="relative z-10">
         
         {/* NAVEGACIÓN */}
         <nav className="fixed w-full top-0 z-50 df-bg/90 backdrop-blur-md border-b df-border py-4 px-6 md:px-12 flex justify-between items-center transition-all shadow-xs">
           <Link href="/" onClick={goToTop} className="font-bold tracking-wider text-lg df-text flex items-center gap-2 cursor-pointer">
             <span className="w-2.5 h-2.5 bg-amber-600 rounded-full animate-pulse"></span>
-            DE<span className="text-amber-600">LUCES</span> FILMS
+            {mounted && (
+              <img 
+                src={isDarkMode ? "/Logo Cam.png" : "/Logo Cam.png"} 
+                alt="Deluces Films" 
+                className="h-7 md:h-8 w-auto object-contain"
+              />
+            )}
           </Link>
           
           <div className="hidden md:flex gap-8 text-sm items-center">
             <a href="#servicios" onClick={(e) => scrollToSection(e, '#servicios')} className="nav-link cursor-pointer">Servicios</a>
-            <a href="#portafolio" onClick={(e) => scrollToSection(e, '#portafolio')} className="nav-link cursor-pointer">Especialidades</a>
+            <a href="#portafolio" onClick={(e) => scrollToSection(e, '#portafolio')} className="nav-link cursor-pointer">Portafolio</a>
             <a href="#proceso" onClick={(e) => scrollToSection(e, '#proceso')} className="nav-link cursor-pointer">Proceso</a>
             <a href="#precios" onClick={(e) => scrollToSection(e, '#precios')} className="nav-link cursor-pointer">Precios</a>
             <a href="#faq" onClick={(e) => scrollToSection(e, '#faq')} className="nav-link cursor-pointer">FAQ</a>
@@ -289,11 +383,11 @@ export default function Home() {
           </div>
         </nav>
 
-        {/* Menú Móvil */}
+        {/* MENÚ MÓVIL */}
         {menuAbierto && (
           <div className="fixed inset-0 z-40 df-bg pt-24 px-6 flex flex-col gap-6 md:hidden animate-fade-in shadow-2xl">
             <a href="#servicios" onClick={(e) => scrollToSection(e, '#servicios')} className="text-xl font-bold df-text border-b df-border pb-3 cursor-pointer">Servicios</a>
-            <a href="#portafolio" onClick={(e) => scrollToSection(e, '#portafolio')} className="text-xl font-bold df-text border-b df-border pb-3 cursor-pointer">Especialidades</a>
+            <a href="#portafolio" onClick={(e) => scrollToSection(e, '#portafolio')} className="text-xl font-bold df-text border-b df-border pb-3 cursor-pointer">Portafolio</a>
             <a href="#proceso" onClick={(e) => scrollToSection(e, '#proceso')} className="text-xl font-bold df-text border-b df-border pb-3 cursor-pointer">Proceso</a>
             <a href="#precios" onClick={(e) => scrollToSection(e, '#precios')} className="text-xl font-bold df-text border-b df-border pb-3 cursor-pointer">Precios</a>
             <a href="#faq" onClick={(e) => scrollToSection(e, '#faq')} className="text-xl font-bold df-text border-b df-border pb-3 cursor-pointer">FAQ</a>
@@ -302,48 +396,43 @@ export default function Home() {
           </div>
         )}
 
+        {/* HERO SECTION */}
         <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden df-bg">
-          
-          <div 
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              backgroundImage: "url('/pattern.png')",
-              backgroundRepeat: "repeat",
-              backgroundSize: "140px 140px",
-              opacity: 0.05 // Aquí controlas qué tan tenue se ve (0.05 es un 5%)
-            }}
-          />
-          
-          {/* Tus luces decorativas originales */}
+          <div className="absolute inset-0 pointer-events-none hero-pattern" />
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/5 rounded-full blur-[120px] pointer-events-none animate-pulse-glow" />
           <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-amber-600/5 rounded-full blur-[120px] pointer-events-none animate-float" />
           
-          {/* Contenido del Hero */}
           <div className="relative z-10 text-center max-w-4xl px-6 animate-fade-in">
             <p className="text-amber-600 text-xs md:text-sm font-semibold tracking-[0.25em] uppercase mb-6 flex items-center justify-center gap-3">
               <span className="w-10 h-[1.5px] bg-amber-600 transition-all duration-500 hover:w-16"></span>
               FOTOGRAFÍA · FILMACIÓN · PRODUCCIÓN
               <span className="w-10 h-[1.5px] bg-amber-600 transition-all duration-500 hover:w-16"></span>
             </p>
-            
-            <h1 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-tight leading-[1.08] mb-8 df-text">
-              Cada momento <br className="hidden md:block"/> tiene su <span className="text-amber-600 italic pr-2 font-serif inline-block transition-transform duration-500 hover:scale-105">luz.</span>
-            </h1>
-            
+
+            <div className="mb-8 w-80 md:w-[480px] lg:w-[540px] relative group transition-all duration-700 mx-auto">
+              <div className="absolute inset-0 bg-amber-600/10 rounded-full blur-3xl pointer-events-none -z-10 group-hover:bg-amber-600/20 transition-all duration-700"></div>
+              {mounted && (
+                <img 
+                  src={isDarkMode ? "/LOGO 2026 N.png" : "/LOGO 2026 B.png"} 
+                  alt="Deluces Films" 
+                  className="w-full h-auto object-contain drop-shadow-lg transition-transform duration-700 hover:scale-105"
+                />
+              )}
+            </div>
+
             <p className="df-muted text-lg md:text-xl max-w-2xl mx-auto mb-10 font-normal">
-              Inmortalizamos tu historia y potenciamos tu negocio con un estándar cinematográfico, sobrio y profesional.
+              Capturamos momentos con creatividad, estilo y calidad. 
             </p>
             
             <div className="flex flex-col sm:flex-row justify-center gap-4">
               <a href="#portafolio" onClick={(e) => scrollToSection(e, '#portafolio')} className="btn-shimmer text-white px-8 py-4 rounded-xl font-bold transition-all duration-300 shadow-lg hover:shadow-2xl hover:-translate-y-1 active:scale-95 inline-block cursor-pointer">
-                Explorar Especialidades
+                Explorar Portafolio
               </a>
             </div>
           </div>
         </section>
-        
 
-        {/* SECCIÓN: SERVICIOS */}
+        {/* SERVICIOS */}
         <motion.section 
           initial={{ opacity: 0, y: 30 }} 
           whileInView={{ opacity: 1, y: 0 }} 
@@ -356,7 +445,7 @@ export default function Home() {
             <div className="text-center mb-16">
               <p className="text-amber-600 text-xs font-bold tracking-widest uppercase mb-3">LO QUE HACEMOS</p>
               <h2 className="text-4xl md:text-5xl font-extrabold df-text">Nuestros Servicios Principales</h2>
-              <p className="df-muted text-sm mt-2 max-w-xl mx-auto">Pilares técnicos y creativos con los que dotamos a cada producción de un valor estético superior.</p>
+              <p className="df-muted text-sm mt-2 max-w-xl mx-auto">Soluciones audiovisuales y fotográficas de alto nivel, diseñadas para destacar la estética y el mensaje de cada producción.</p>
             </div>
 
             <div className="grid md:grid-cols-3 gap-8">
@@ -378,7 +467,7 @@ export default function Home() {
           </div>
         </motion.section>
 
-        {/* SECCIÓN DE ESPECIALIDADES */}
+        {/* PORTAFOLIO / CATÁLOGO */}
         <motion.section 
           initial={{ opacity: 0, y: 30 }} 
           whileInView={{ opacity: 1, y: 0 }} 
@@ -402,7 +491,7 @@ export default function Home() {
           </div>
         </motion.section>
 
-        {/* PROCESO */}
+        {/* METODOLOGÍA / PROCESO */}
         <motion.section 
           initial={{ opacity: 0, y: 30 }} 
           whileInView={{ opacity: 1, y: 0 }} 
@@ -448,33 +537,41 @@ export default function Home() {
               <h2 className="text-4xl md:text-5xl font-extrabold df-text">Planes de Cobertura</h2>
             </div>
             <div className="grid md:grid-cols-3 gap-8 items-stretch">
+              {/* PLAN ESENCIAL */}
               <div className="p-8 rounded-2xl border df-border df-bg shadow-xs hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 flex flex-col justify-between">
                 <div>
                   <p className="df-muted text-xs font-bold tracking-widest uppercase mb-2">Esencial</p>
-                  <div className="text-4xl font-black mb-6 df-text">S/ 690</div>
+                  <span className="text-xs md:text-sm font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-500">desde</span>
+                  <div className="text-4xl font-black mb-6 df-text">S/ 400</div>
                   <ul className="space-y-4 mb-8 text-sm df-muted">
-                    <li className="flex gap-3"><CheckCircle2 className="text-slate-500 w-5 h-5 flex-shrink-0"/> 3 horas de cobertura</li>
+                    <li className="flex gap-3"><CheckCircle2 className="text-slate-500 w-5 h-5 flex-shrink-0"/> 4 horas de cobertura</li>
                     <li className="flex gap-3"><CheckCircle2 className="text-slate-500 w-5 h-5 flex-shrink-0"/> 40 fotos editadas</li>
                     <li className="flex gap-3"><CheckCircle2 className="text-slate-500 w-5 h-5 flex-shrink-0"/> Galería digital privada</li>
                   </ul>
                 </div>
               </div>
+              
+              {/* PLAN CINEMÁTICO */}
               <div className="p-8 rounded-2xl border-2 border-amber-600 df-bg relative transform md:-translate-y-4 shadow-2xl transition-all duration-500 hover:-translate-y-6 flex flex-col justify-between">
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-600 text-white text-[10px] font-bold px-4 py-1.5 rounded-full uppercase tracking-wider shadow-md z-50 whitespace-nowrap">Más Solicitado</div>
                 <div>
                   <p className="text-amber-600 text-xs font-bold tracking-widest uppercase mb-2">Cinemático</p>
-                  <div className="text-4xl font-black mb-6 df-text">S/ 1,290</div>
+                  <span className="text-xs md:text-sm font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-500">desde</span>
+                  <div className="text-4xl font-black mb-6 df-text">S/ 800</div>
                   <ul className="space-y-4 mb-8 text-sm df-text">
-                    <li className="flex gap-3"><CheckCircle2 className="text-amber-600 w-5 h-5 flex-shrink-0"/> 5 horas de cobertura</li>
+                    <li className="flex gap-3"><CheckCircle2 className="text-amber-600 w-5 h-5 flex-shrink-0"/> 8 horas de cobertura</li>
                     <li className="flex gap-3"><CheckCircle2 className="text-amber-600 w-5 h-5 flex-shrink-0"/> Video resumen (3-5 min)</li>
                     <li className="flex gap-3"><CheckCircle2 className="text-amber-600 w-5 h-5 flex-shrink-0"/> 60 fotos editadas</li>
                   </ul>
                 </div>
               </div>
+
+              {/* PLAN PREMIUM */}
               <div className="p-8 rounded-2xl border df-border df-bg shadow-xs hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 flex flex-col justify-between">
                 <div>
                   <p className="text-blue-600 text-xs font-bold tracking-widest uppercase mb-2">Premium</p>
-                  <div className="text-4xl font-black mb-6 df-text">S/ 2,490</div>
+                  <span className="text-xs md:text-sm font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-500">desde</span>
+                  <div className="text-4xl font-black mb-6 df-text">S/ 1200</div>
                   <ul className="space-y-4 mb-8 text-sm df-muted">
                     <li className="flex gap-3"><CheckCircle2 className="text-blue-600 w-5 h-5 flex-shrink-0"/> Full Day (Preparativos a Fiesta)</li>
                     <li className="flex gap-3"><CheckCircle2 className="text-blue-600 w-5 h-5 flex-shrink-0"/> Tomas con Dron</li>
@@ -486,7 +583,7 @@ export default function Home() {
           </div>
         </motion.section>
 
-        {/* FAQ */}
+        {/* PREGUNTAS FRECUENTES */}
         <motion.section 
           initial={{ opacity: 0, y: 30 }} 
           whileInView={{ opacity: 1, y: 0 }} 
@@ -500,7 +597,6 @@ export default function Home() {
               <p className="text-amber-600 text-xs font-bold tracking-widest uppercase mb-3">RESOLVEMOS TUS DUDAS</p>
               <h2 className="text-4xl md:text-5xl font-extrabold df-text">Preguntas Frecuentes</h2>
             </div>
-
             <div className="space-y-4">
               {preguntasFrecuentes.map((faq, index) => (
                 <div 
@@ -518,7 +614,6 @@ export default function Home() {
                       className={`text-amber-600 transform transition-transform duration-300 flex-shrink-0 ${faqAbierto === index ? 'rotate-180' : ''}`} 
                     />
                   </button>
-                  
                   {faqAbierto === index && (
                     <div className="px-6 pb-6 pt-0 df-muted text-sm md:text-base leading-relaxed animate-fade-in border-t df-border pt-4">
                       {faq.respuesta}
@@ -548,21 +643,43 @@ export default function Home() {
               <div className="space-y-6">
                 <div className="flex items-center gap-4 transition-transform duration-300 hover:translate-x-1">
                   <div className="w-12 h-12 df-bg rounded-xl flex items-center justify-center df-text shadow-xs"><Smartphone size={20}/></div>
-                  <div><p className="text-xs df-muted">WhatsApp</p><p className="font-semibold df-text">+51 900 000 000</p></div>
+                  <div><p className="text-xs df-muted">WhatsApp</p><p className="font-semibold df-text">+51 967 576 214</p></div>
                 </div>
                 <div className="flex items-center gap-4 transition-transform duration-300 hover:translate-x-1">
                   <div className="w-12 h-12 df-bg rounded-xl flex items-center justify-center df-text shadow-xs"><Mail size={20}/></div>
-                  <div><p className="text-xs df-muted">Email</p><p className="font-semibold df-text">hola@delucesfilms.com</p></div>
+                  <div><p className="text-xs df-muted">Email</p><p className="font-semibold df-text">delucesvisual@gmail.com</p></div>
                 </div>
                 <div className="flex items-center gap-4 transition-transform duration-300 hover:translate-x-1">
                   <div className="w-12 h-12 df-bg rounded-xl flex items-center justify-center df-text shadow-xs"><MapPin size={20}/></div>
-                  <div><p className="text-xs df-muted">Ubicación</p><p className="font-semibold df-text">Lima, Perú</p></div>
+                  <div><p className="text-xs df-muted">Ubicación</p><p className="font-semibold df-text">Perú</p></div>
                 </div>
               </div>
             </div>
 
             <div className="df-bg p-8 rounded-2xl border df-border shadow-xl transition-all duration-300 hover:shadow-2xl">
               <form onSubmit={handleWhatsAppSubmit} className="space-y-4">
+                {/* Selector de Tipo de Evento */}
+                <div>
+                  <label className="text-xs font-bold df-muted mb-1.5 block">Tipo de Evento</label>
+                  <select 
+                    value={tipoEvento}
+                    onChange={(e) => setTipoEvento(e.target.value)}
+                    required
+                    className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors df-text text-sm cursor-pointer"
+                  >
+                    <option value="">Selecciona el tipo de evento</option>
+                    <option value="Eventos Institucionales">Eventos Institucionales</option>
+                    <option value="Sesión de Fotos de Pareja">Sesión de Fotos de Pareja</option>
+                    <option value="Publicidad para Negocios">Publicidad para Negocios</option>
+                    <option value="Revelación de Género / Sociales">Revelación de Género / Sociales</option>
+                    <option value="Fiestas Patronales">Fiestas Patronales</option>
+                    <option value="Videoclips y Grupos de Baile">Videoclips y Grupos de Baile</option>
+                    <option value="Invitaciones Virtuales">Invitaciones Virtuales</option>
+                    <option value="Fotos y Videos Personales">Fotos y Videos Personales</option>
+                  </select>
+                </div>
+
+                {/* Nombre */}
                 <div>
                   <label className="text-xs font-bold df-muted mb-1.5 block">Tu Nombre</label>
                   <input 
@@ -574,23 +691,8 @@ export default function Home() {
                     placeholder="Ej. Juan Pérez" 
                   />
                 </div>
-                <div>
-                  <label className="text-xs font-bold df-muted mb-1.5 block">Tipo de Evento o Proyecto</label>
-                  <select 
-                    value={tipoEvento}
-                    onChange={(e) => setTipoEvento(e.target.value)}
-                    className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors df-text text-sm"
-                  >
-                    <option value="Eventos Institucionales" className="df-card df-text">Eventos Institucionales</option>
-                    <option value="Sesión de Fotos de Pareja" className="df-card df-text">Sesión de Fotos de Pareja</option>
-                    <option value="Publicidad para Negocios" className="df-card df-text">Publicidad para Negocios</option>
-                    <option value="Revelación de Género" className="df-card df-text">Revelación de Género</option>
-                    <option value="Fiestas Patronales" className="df-card df-text">Fiestas Patronales</option>
-                    <option value="Videoclips y Grupos de Baile" className="df-card df-text">Videoclips o Grupos de Baile</option>
-                    <option value="Invitaciones Virtuales" className="df-card df-text">Invitaciones Virtuales</option>
-                    <option value="Sesión Personal / Retratos" className="df-card df-text">Fotos y Videos Personales</option>
-                  </select>
-                </div>
+                
+                {/* Mensaje */}
                 <div>
                   <label className="text-xs font-bold df-muted mb-1.5 block">Mensaje</label>
                   <textarea 
@@ -602,6 +704,8 @@ export default function Home() {
                     placeholder="Cuéntanos los detalles..."
                   ></textarea>
                 </div>
+
+                {/* Botón de envío */}
                 <button type="submit" className="w-full btn-shimmer text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-md hover:shadow-xl flex items-center justify-center gap-2 text-sm active:scale-95 cursor-pointer">
                   <Send size={18} /> Enviar Mensaje por WhatsApp
                 </button>
@@ -610,7 +714,7 @@ export default function Home() {
           </div>
         </motion.section>
 
-        {/* BOTÓN "VOLVER ARRIBA" */}
+        {/* BOTÓN VOLVER ARRIBA */}
         {showTopBtn && (
           <button 
             onClick={goToTop}
@@ -623,7 +727,7 @@ export default function Home() {
 
         {/* WIDGET FLOTANTE DE WHATSAPP */}
         <a 
-          href="https://wa.me/51900000000?text=Hola,%20me%20interesa%20cotizar%20un%20servicio%20audiovisual." 
+          href="https://wa.me/51967576214?text=Hola,%20me%20interesa%20cotizar%20un%20servicio%20audiovisual." 
           target="_blank" 
           rel="noopener noreferrer"
           className="fixed bottom-6 right-6 z-50 bg-[#25D366] text-white p-3.5 rounded-full shadow-2xl whatsapp-pulse transition-all duration-300 flex items-center justify-center group cursor-pointer"
@@ -643,7 +747,6 @@ export default function Home() {
         </footer>
 
       </div>
-
     </div>
   );
 }

@@ -83,3 +83,44 @@ body {
   perspective: 1000px;
   transition: transform 0.1s ease, box-shadow 0.3s ease;
 }
+
+:root {
+  --pattern-img: url('/pattern-light.png');
+}
+
+.dark {
+  --pattern-img: url('/pattern-dark.png');
+}
+
+.hero-pattern {
+  background-image: var(--pattern-img);
+  background-repeat: repeat;
+  /* Ancho de 300px y alto automático para que mantenga su proporción exacta y no se deforme */
+  background-size: 960px auto; 
+  opacity: 0.1;
+}
+
+.dark .hero-pattern {
+  opacity: 0.1;
+}
+
+/* Control de visibilidad de los logos según el modo oscuro */
+.logo-claro {
+  display: block !important;
+}
+.logo-oscuro {
+  display: none !important;
+}
+
+/* Modo Oscuro (Soporta clase .dark o atributos de tema personalizados) */
+.dark .logo-claro, 
+[data-theme="dark"] .logo-claro, 
+[data-theme*="dark"] .logo-claro {
+  display: none !important;
+}
+
+.dark .logo-oscuro, 
+[data-theme="dark"] .logo-oscuro, 
+[data-theme*="dark"] .logo-oscuro {
+  display: block !important;
+}
