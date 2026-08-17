@@ -20,10 +20,10 @@ export default function AdminPage() {
   });
   const [cargando, setCargando] = useState(false);
 
-  // Clave secreta para entrar a tu admin (cámbiala si gustas)
+  // Clave secreta para entrar a admin
   const handleLoginAdmin = (e) => {
     e.preventDefault();
-    if (passAdmin === 'admin2026') {
+    if (passAdmin === 'f/#7B301g}CN') {
       setAcceso(true);
     } else {
       alert('Contraseña de administrador incorrecta');
