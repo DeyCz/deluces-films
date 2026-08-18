@@ -226,7 +226,7 @@ export default function Home() {
 
   // Estados del Formulario
   const [nombre, setNombre] = useState('');
-  const [tipoEvento, setTipoEvento] = useState('Eventos Institucionales');
+  const [tipoEvento, setTipoEvento] = useState('');
   const [mensaje, setMensaje] = useState('');
 
   // Efecto de inicialización de Tema Oscuro
@@ -672,7 +672,7 @@ export default function Home() {
                     required
                     className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors df-text text-sm cursor-pointer"
                   >
-                    <option value="">Selecciona el tipo de evento</option>
+                    <option value="" disabled selected>Selecciona el tipo de evento</option>
                     <option value="Eventos Institucionales">Eventos Institucionales</option>
                     <option value="Sesión de Fotos de Pareja">Sesión de Fotos de Pareja</option>
                     <option value="Publicidad para Negocios">Publicidad para Negocios</option>
