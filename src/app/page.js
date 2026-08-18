@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 
 // ==========================================
@@ -764,9 +765,25 @@ export default function Home() {
           </span>
         </a>
 
-        {/* FOOTER */}
-        <footer className="py-8 px-6 bg-zinc-900/30 border-t df-border text-center df-muted text-xs df-card">
-          <p>© 2026 Deluces Films. Capturando la luz de tus mejores momentos.</p>
+        {/* FOOTER CON BOTÓN SECRETO */}
+        <footer className="py-8 px-6 border-t df-border text-center df-muted text-xs df-card">
+          <p 
+            onClick={() => {
+              // Contamos los clics seguidos
+              window.adminClicks = (window.adminClicks || 0) + 1;
+              if (window.adminClicks === 3) {
+                window.adminClicks = 0;
+                // Redirige a tu ruta secreta
+                window.location.href = '/gestion-deluces'; 
+              }
+              // Reinicia el contador si no hace los 3 clics en 1.5 segundos
+              setTimeout(() => { window.adminClicks = 0; }, 1500);
+            }}
+            className="cursor-default select-none inline-block hover:text-amber-500/80 transition-colors"
+            title=""
+          >
+            © 2026 Deluces Films. Todos los derechos reservados.
+          </p>
         </footer>
 
       </div>

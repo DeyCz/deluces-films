@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Camera, Video, Film, ArrowLeft, Send, Play, X, Eye, ArrowUp, Sun, Moon, MapPin, Smartphone, Lock } from 'lucide-react';
+import { Camera, Video, Film, ArrowLeft, Send, Play, X, Eye, ArrowUp, Sun, Moon, MapPin, Smartphone, Lock, ChevronLeft, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
@@ -92,8 +92,11 @@ export default function SlugClient({ slug }) {
   const [tipoEvento, setTipoEvento] = useState(data ? data.formulario : '');
   const [mensaje, setMensaje] = useState('');
 
+  // Estados del Modal y Navegación
   const [modalAbierto, setModalAbierto] = useState(false);
   const [trabajoSeleccionado, setTrabajoSeleccionado] = useState(null);
+  const [indiceActual, setIndiceActual] = useState(0);
+  
   const [showTopBtn, setShowTopBtn] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
@@ -143,19 +146,48 @@ export default function SlugClient({ slug }) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Control por teclado para la galería (Izquierda, Derecha, Escape)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!modalAbierto) return;
+      if (e.key === 'ArrowRight') irSiguiente(e);
+      if (e.key === 'ArrowLeft') irAnterior(e);
+      if (e.key === 'Escape') cerrarModal();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [modalAbierto, indiceActual, galeriaFotos]);
+
   const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
   const goToTop = (e) => {
     if (e) e.preventDefault();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const abrirModal = (item) => {
-    setTrabajoSeleccionado(item);
+  // Funciones de la Galería
+  const abrirModal = (index) => {
+    setIndiceActual(index);
+    setTrabajoSeleccionado(galeriaFotos[index]);
     setModalAbierto(true);
   };
+  
   const cerrarModal = () => {
     setModalAbierto(false);
     setTrabajoSeleccionado(null);
+  };
+
+  const irSiguiente = (e) => {
+    if (e) e.stopPropagation();
+    const nuevoIndice = (indiceActual + 1) % galeriaFotos.length;
+    setIndiceActual(nuevoIndice);
+    setTrabajoSeleccionado(galeriaFotos[nuevoIndice]);
+  };
+
+  const irAnterior = (e) => {
+    if (e) e.stopPropagation();
+    const nuevoIndice = (indiceActual - 1 + galeriaFotos.length) % galeriaFotos.length;
+    setIndiceActual(nuevoIndice);
+    setTrabajoSeleccionado(galeriaFotos[nuevoIndice]);
   };
 
   const handleWhatsAppSubmit = (e) => {
@@ -164,7 +196,6 @@ export default function SlugClient({ slug }) {
     window.open(`https://wa.me/51967576214?text=${encodeURIComponent(texto)}`, '_blank');
   };
 
-  // Función para adaptar links de video (YouTube o Drive) al formato iframe
   const obtenerLinkEmbed = (url) => {
     if (!url) return '';
     if (url.includes('youtube.com/watch?v=')) return url.replace('watch?v=', 'embed/');
@@ -222,16 +253,15 @@ export default function SlugClient({ slug }) {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {galeriaFotos.map((foto) => (
+            {galeriaFotos.map((foto, index) => (
               <div 
                 key={foto.id} 
-                onClick={() => abrirModal(foto)}
+                onClick={() => abrirModal(index)}
                 className="group relative h-[280px] df-card rounded-2xl overflow-hidden border df-border shadow-xs cursor-pointer flex items-center justify-center transition-all duration-500 hover:shadow-2xl hover:-translate-y-2 bg-black"
               >
                 <img src={foto.imagenUrl} alt={foto.titulo} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 z-0 opacity-80 group-hover:opacity-100" loading="lazy"/>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-70 group-hover:opacity-90 transition-opacity duration-300 z-10" />
                 
-                {/* ÍCONO DE PLAY SI TIENE VIDEO */}
                 {foto.videoUrl && (
                   <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
                     <div className="w-14 h-14 bg-amber-600/90 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform">
@@ -256,22 +286,33 @@ export default function SlugClient({ slug }) {
         )}
       </section>
 
-      {/* MODAL PROFESIONAL (Proporciones controladas y elegantes) */}
+      {/* MODAL PROFESIONAL CON NAVEGACIÓN */}
       {modalAbierto && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-6 animate-fade-in">
           
-          {/* Botón Cerrar (Más minimalista) */}
-          <button 
-            onClick={cerrarModal} 
-            className="absolute top-6 right-6 z-50 text-white/50 hover:text-white p-2 transition-colors cursor-pointer"
-          >
+          <button onClick={cerrarModal} className="absolute top-6 right-6 z-50 text-white/50 hover:text-white p-2 transition-colors cursor-pointer">
             <X size={32} strokeWidth={1.5} />
           </button>
 
-          {/* Contenedor Principal Limitado (Da espacio para que la foto respire) */}
-          <div className="relative w-full max-w-4xl mx-auto flex flex-col items-center">
-            
-            {/* Área Multimedia */}
+          {/* Botones de Navegación (Solo si hay más de 1 foto) */}
+          {galeriaFotos.length > 1 && (
+            <>
+              <button 
+                onClick={irAnterior}
+                className="absolute left-2 md:left-8 top-1/2 -translate-y-1/2 z-50 text-white/50 hover:text-white p-2 md:p-3 bg-black/20 hover:bg-black/60 rounded-full backdrop-blur-sm transition-all cursor-pointer"
+              >
+                <ChevronLeft size={36} strokeWidth={1.5} />
+              </button>
+              <button 
+                onClick={irSiguiente}
+                className="absolute right-2 md:right-8 top-1/2 -translate-y-1/2 z-50 text-white/50 hover:text-white p-2 md:p-3 bg-black/20 hover:bg-black/60 rounded-full backdrop-blur-sm transition-all cursor-pointer"
+              >
+                <ChevronRight size={36} strokeWidth={1.5} />
+              </button>
+            </>
+          )}
+
+          <div className="relative w-full max-w-4xl mx-auto flex flex-col items-center px-8 md:px-0">
             <div className="w-full flex justify-center items-center">
               {trabajoSeleccionado?.videoUrl ? (
                 <div className="w-full aspect-video rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
@@ -287,22 +328,26 @@ export default function SlugClient({ slug }) {
                   <img 
                     src={trabajoSeleccionado?.imagenUrl} 
                     alt={trabajoSeleccionado?.titulo} 
-                    // max-h-[65vh] controla que no se haga gigante de alto
-                    className="max-h-[65vh] w-auto max-w-full object-contain rounded-lg shadow-2xl ring-1 ring-white/10"
+                    className="max-h-[65vh] w-auto max-w-full object-contain rounded-lg shadow-2xl ring-1 ring-white/10 select-none"
                   />
                 </div>
               )}
             </div>
 
-            {/* Información y Botón (Minimalistas) */}
-            <div className="mt-8 w-full flex flex-col md:flex-row items-center justify-between gap-6 px-2">
+            <div className="mt-8 w-full flex flex-col md:flex-row items-center justify-between gap-6">
               <div className="text-center md:text-left">
                 <h3 className="text-xl md:text-2xl font-bold text-white tracking-wide">
                   {trabajoSeleccionado?.titulo}
                 </h3>
-                <p className="text-[11px] text-white/50 uppercase tracking-[0.2em] mt-2 font-medium">
-                  {trabajoSeleccionado?.videoUrl ? 'Spot Audiovisual' : 'Registro Fotográfico'}
-                </p>
+                <div className="flex items-center justify-center md:justify-start gap-3 mt-2">
+                  <p className="text-[11px] text-white/50 uppercase tracking-[0.2em] font-medium">
+                    {trabajoSeleccionado?.videoUrl ? 'Spot Audiovisual' : 'Registro Fotográfico'}
+                  </p>
+                  <span className="text-xs text-white/30">•</span>
+                  <p className="text-[11px] text-white/50 font-medium">
+                    {indiceActual + 1} / {galeriaFotos.length}
+                  </p>
+                </div>
               </div>
               
               <a 
@@ -313,7 +358,6 @@ export default function SlugClient({ slug }) {
                 Cotizar este servicio
               </a>
             </div>
-
           </div>
         </div>
       )}
@@ -332,7 +376,7 @@ export default function SlugClient({ slug }) {
               </div>
               <div className="flex items-center gap-4 transition-transform duration-300 hover:translate-x-1">
                 <div className="w-12 h-12 df-bg rounded-xl flex items-center justify-center df-text shadow-xs"><MapPin size={20}/></div>
-                <div><p className="text-xs df-muted">Ubicación de Cobertura</p><p className="font-semibold df-text">Perú</p></div>
+                <div><p className="text-xs df-muted">Ubicación de Cobertura</p><p className="font-semibold df-text">Cerro de Pasco y todo el Perú</p></div>
               </div>
             </div>
           </div>
@@ -374,7 +418,7 @@ export default function SlugClient({ slug }) {
         </button>
       )}
 
-      {/* BOTÓN FLOTANTE: ACCESO A CLIENTES (Esquina inferior izquierda) */}
+      {/* BOTÓN FLOTANTE: ÁREA PRIVADA */}
       <Link 
         href="/clientes" 
         className="fixed bottom-6 left-6 z-50 bg-black/95 dark:bg-white/95 backdrop-blur-md border border-white/20 dark:border-black/20 pl-2 pr-4 py-2 rounded-full shadow-2xl flex items-center gap-3 transition-transform duration-300 hover:scale-105 cursor-pointer"
@@ -385,10 +429,10 @@ export default function SlugClient({ slug }) {
         </div>
         <div className="flex flex-col text-left">
           <span className="text-[9px] text-amber-500 font-bold uppercase tracking-widest leading-none mb-0.5">
-            ¿TIENES UN CÓDIGO?
+            Área Privada
           </span>
           <span className="text-xs font-bold text-white dark:text-black tracking-wide leading-none">
-            Descarga tu material
+            Ver mi galería
           </span>
         </div>
       </Link>
@@ -398,8 +442,21 @@ export default function SlugClient({ slug }) {
         <span className="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs group-hover:ml-2 transition-all duration-500 text-sm font-bold">¡Escríbenos!</span>
       </a>
 
+      {/* FOOTER CON BOTÓN SECRETO */}
       <footer className="py-8 px-6 border-t df-border text-center df-muted text-xs df-card">
-        <p>© 2026 Deluces Films. {data.titulo}.</p>
+        <p 
+          onClick={() => {
+            window.adminClicks = (window.adminClicks || 0) + 1;
+            if (window.adminClicks === 3) {
+              window.adminClicks = 0;
+              window.location.href = '/gestion-deluces';
+            }
+            setTimeout(() => { window.adminClicks = 0; }, 1500);
+          }}
+          className="cursor-default select-none inline-block hover:text-amber-500/80 transition-colors"
+        >
+          © 2026 Deluces Films. {data.titulo}.
+        </p>
       </footer>
     </div>
   );

@@ -1,14 +1,19 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { ShieldCheck, PlusCircle, ArrowLeft, Image as ImageIcon, Trash2, Edit2, X, RefreshCw, Video } from 'lucide-react';
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import { ShieldCheck, PlusCircle, ArrowLeft, Image as ImageIcon, Trash2, Edit2, X, RefreshCw, Video, LogOut } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AdminPage() {
-  const [acceso, setAcceso] = useState(false);
-  const [passAdmin, setPassAdmin] = useState('');
+  const [user, setUser] = useState(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [cargandoAuth, setCargandoAuth] = useState(false);
+
+  const [refrescando, setRefrescando] = useState(false);
   
   // ESTADOS CLIENTES
   const clienteInicial = { nombreCliente: '', password: '', tipo: '', fecha: '', previewImage: '', driveLink: '' };
@@ -24,8 +29,20 @@ export default function AdminPage() {
   const [listaGaleria, setListaGaleria] = useState([]);
   const [editandoFotoId, setEditandoFotoId] = useState(null);
 
+  // VERIFICAR SESIÓN DE FIREBASE AUTH
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        cargarDatos();
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   // CARGAR DATOS
   const cargarDatos = async () => {
+    setRefrescando(true);
     try {
       const clientesSnapshot = await getDocs(collection(db, "clientes"));
       setListaClientes(clientesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -36,31 +53,41 @@ export default function AdminPage() {
       setListaGaleria(fotosCargadas);
     } catch (error) {
       console.error("Error al cargar datos:", error);
+    } finally {
+      setTimeout(() => setRefrescando(false), 500); 
     }
   };
 
-  useEffect(() => {
-    if (acceso) cargarDatos();
-  }, [acceso]);
-
   // AUTO-CALCULAR ORDEN
   useEffect(() => {
-    if (!editandoFotoId) {
+    if (!editandoFotoId && user) {
       const fotosCategoria = listaGaleria.filter(foto => foto.slug === formGaleria.slug);
       const siguienteOrden = fotosCategoria.length > 0 
         ? Math.max(...fotosCategoria.map(f => Number(f.orden) || 0)) + 1 
         : 1;
       setFormGaleria(prev => ({ ...prev, orden: siguienteOrden }));
     }
-  }, [formGaleria.slug, listaGaleria, editandoFotoId]);
+  }, [formGaleria.slug, listaGaleria, editandoFotoId, user]);
 
-  // LOGIN
-  const handleLoginAdmin = (e) => {
+  // LOGIN CON FIREBASE AUTH
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (passAdmin === 'f/#7B301g}CN') {
-      setAcceso(true);
-    } else {
-      alert('Contraseña de administrador incorrecta');
+    setCargandoAuth(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+      console.error("Error de autenticación:", error);
+      alert('Correo o contraseña de administrador incorrectos');
+    } finally {
+      setCargandoAuth(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
     }
   };
 
@@ -104,7 +131,6 @@ export default function AdminPage() {
     e.preventDefault();
     setCargandoGaleria(true);
     try {
-      // Limpiar videoUrl si está vacío o tiene solo espacios
       const cleanVideoUrl = formGaleria.videoUrl?.trim() || "";
       const dataToSave = { 
         ...formGaleria, 
@@ -139,28 +165,52 @@ export default function AdminPage() {
 
   const prepararEdicionFoto = (foto) => {
     setEditandoFotoId(foto.id);
-    // Asegurarse de que videoUrl exista en el form aunque venga de datos viejos
     setFormGaleria({ ...foto, videoUrl: foto.videoUrl || '' });
     window.scrollTo({ top: 500, behavior: 'smooth' });
   };
 
-  // UI LOGIN
-  if (!acceso) {
+  // UI LOGIN (FIREBASE AUTHENTICATION)
+  if (!user) {
     return (
       <div className="min-h-screen df-bg flex items-center justify-center p-6 relative">
-        <Link href="/" className="absolute top-8 left-8 flex items-center gap-2 text-sm df-muted hover:df-text transition-all"><ArrowLeft size={16} /> Volver al sitio</Link>
-        <form onSubmit={handleLoginAdmin} className="df-card p-8 rounded-3xl border df-border w-full max-w-md shadow-2xl text-center">
+        <Link href="/" className="absolute top-8 left-8 flex items-center gap-2 text-sm df-muted hover:df-text transition-all">
+          <ArrowLeft size={16} /> Volver al sitio
+        </Link>
+        <form onSubmit={handleLogin} className="df-card p-8 rounded-3xl border df-border w-full max-w-md shadow-2xl text-center">
           <ShieldCheck className="w-12 h-12 text-amber-600 mx-auto mb-4" />
           <h1 className="text-2xl font-bold df-text mb-2">Panel Administrativo</h1>
-          <p className="df-muted text-sm mb-6">Ingresa tu clave de administración.</p>
-          <input type="password" value={passAdmin} onChange={(e) => setPassAdmin(e.target.value)} className="w-full df-card border df-border rounded-xl px-4 py-3 mb-4 text-center font-bold tracking-widest text-sm outline-none focus:border-amber-600" placeholder="Clave de admin" required />
-          <button type="submit" className="w-full bg-amber-600 text-white font-bold py-3.5 rounded-xl hover:bg-amber-700 transition-all cursor-pointer text-sm">Entrar al Panel</button>
+          <p className="df-muted text-sm mb-6">Ingresa tus credenciales seguras.</p>
+          
+          <input 
+            type="email" 
+            value={email} 
+            onChange={(e) => setEmail(e.target.value)} 
+            className="w-full df-card border df-border rounded-xl px-4 py-3 mb-3 text-sm outline-none focus:border-amber-600 df-text" 
+            placeholder="Correo electrónico" 
+            required 
+          />
+          <input 
+            type="password" 
+            value={password} 
+            onChange={(e) => setPassword(e.target.value)} 
+            className="w-full df-card border df-border rounded-xl px-4 py-3 mb-6 text-sm outline-none focus:border-amber-600 df-text" 
+            placeholder="Contraseña" 
+            required 
+          />
+          
+          <button 
+            type="submit" 
+            disabled={cargandoAuth} 
+            className="w-full bg-amber-600 text-white font-bold py-3.5 rounded-xl hover:bg-amber-700 transition-all cursor-pointer text-sm shadow-md"
+          >
+            {cargandoAuth ? 'Verificando...' : 'Entrar al Panel'}
+          </button>
         </form>
       </div>
     );
   }
 
-  // UI ADMIN
+  // UI ADMIN (AUTENTICADO)
   return (
     <div className="min-h-screen df-bg py-16 px-6">
       <div className="max-w-5xl mx-auto space-y-12">
@@ -170,8 +220,25 @@ export default function AdminPage() {
             <h1 className="text-3xl font-black df-text mt-1">Panel de Control</h1>
           </div>
           <div className="flex items-center gap-4">
-            <button onClick={cargarDatos} className="text-sm df-muted hover:text-amber-500 flex items-center gap-2" title="Refrescar Datos"><RefreshCw size={16} /> Actualizar</button>
-            <Link href="/" className="text-sm df-muted hover:df-text flex items-center gap-2 ml-4 border-l df-border pl-4"><ArrowLeft size={16} /> Ver Web</Link>
+            <button 
+              onClick={cargarDatos} 
+              disabled={refrescando}
+              className={`text-sm flex items-center gap-2 transition-all cursor-pointer ${refrescando ? 'text-amber-500' : 'df-muted hover:text-amber-500'}`} 
+              title="Refrescar Datos"
+            >
+              <RefreshCw size={16} className={refrescando ? "animate-spin" : ""} /> 
+              {refrescando ? 'Actualizando...' : 'Actualizar'}
+            </button>
+            <Link href="/" className="text-sm df-muted hover:df-text flex items-center gap-2 ml-4 border-l df-border pl-4">
+              <ArrowLeft size={16} /> Ver Web
+            </Link>
+            <button 
+              onClick={handleLogout} 
+              className="text-sm text-red-500 hover:text-red-600 flex items-center gap-1.5 ml-2 transition-colors cursor-pointer"
+              title="Cerrar Sesión"
+            >
+              <LogOut size={16} /> Salir
+            </button>
           </div>
         </div>
 
