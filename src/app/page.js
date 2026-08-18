@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Camera, Video, Film, CheckCircle2, MapPin, Mail, 
   Smartphone, Send, Menu, X, ArrowRight, ArrowUp, 
-  ChevronDown, Sun, Moon, Clapperboard 
+  ChevronDown, Sun, Moon, Clapperboard, Lock
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -728,6 +728,25 @@ export default function Home() {
             <ArrowUp size={20} />
           </button>
         )}
+
+        {/* BOTÓN FLOTANTE: ACCESO A CLIENTES */}
+        <Link 
+          href="/clientes" /* ⚠️ CAMBIA ESTO si la ruta de tu página se llama diferente (ej: /area-clientes) */
+          className="fixed bottom-6 left-6 z-50 bg-black/95 dark:bg-white/95 backdrop-blur-md border border-white/20 dark:border-black/20 pl-2 pr-4 py-2 rounded-full shadow-2xl flex items-center gap-3 transition-transform duration-300 hover:scale-105 cursor-pointer"
+        >
+          <div className="bg-amber-600 rounded-full p-2 relative">
+            <span className="absolute inset-0 rounded-full bg-amber-600 animate-ping opacity-50"></span>
+            <Lock size={16} className="text-white relative z-10" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[9px] text-amber-500 font-bold uppercase tracking-widest leading-none mb-0.5">
+              ¿TIENES UN CÓDIGO?
+            </span>
+            <span className="text-xs font-bold text-white dark:text-black tracking-wide leading-none">
+              Descarga tu material
+            </span>
+          </div>
+        </Link>
 
         {/* WIDGET FLOTANTE DE WHATSAPP */}
         <a 

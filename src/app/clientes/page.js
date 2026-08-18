@@ -44,7 +44,7 @@ export default function AreaClientes() {
           <ArrowLeft size={16} /> Volver al sitio
         </Link>
 
-        <form onSubmit={handleLogin} className="df-card p-8 rounded-3xl border df-border w-full max-w-md shadow-2xl text-center">
+        <form onSubmit={handleLogin} id="acceso-clientes" className="df-card p-8 rounded-3xl border df-border w-full max-w-md shadow-2xl text-center">
           <div className="w-16 h-16 bg-amber-600/10 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
             <Lock size={32} />
           </div>
