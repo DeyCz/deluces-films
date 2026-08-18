@@ -196,12 +196,24 @@ export default function SlugClient({ slug }) {
     window.open(`https://wa.me/51967576214?text=${encodeURIComponent(texto)}`, '_blank');
   };
 
+  // FUNCIÓN MEJORADA PARA LIMPIAR LOS CONTROLES DE YOUTUBE
   const obtenerLinkEmbed = (url) => {
     if (!url) return '';
-    if (url.includes('youtube.com/watch?v=')) return url.replace('watch?v=', 'embed/');
-    if (url.includes('youtu.be/')) return url.replace('youtu.be/', 'youtube.com/embed/');
-    if (url.includes('drive.google.com') && url.includes('/view')) return url.replace('/view', '/preview').replace('?usp=sharing', '');
-    return url;
+    let embedUrl = url;
+    if (url.includes('youtube.com/watch?v=')) {
+      embedUrl = url.replace('watch?v=', 'embed/');
+    } else if (url.includes('youtu.be/')) {
+      embedUrl = url.replace('youtu.be/', 'youtube.com/embed/');
+    } else if (url.includes('drive.google.com') && url.includes('/view')) {
+      embedUrl = url.replace('/view', '/preview').replace('?usp=sharing', '');
+    }
+    
+    // Agregamos parámetros para ocultar controles molestos de YouTube
+    if (embedUrl.includes('youtube.com/embed/')) {
+      const separador = embedUrl.includes('?') ? '&' : '?';
+      return `${embedUrl}${separador}autoplay=1&controls=0&modestbranding=1&playsinline=1&rel=0`;
+    }
+    return embedUrl;
   };
 
   if (!data) return (
@@ -321,10 +333,10 @@ export default function SlugClient({ slug }) {
               {trabajoSeleccionado?.videoUrl ? (
                 /* Contenedor vertical 9:16 con truco para eliminar franjas laterales */
                 <div className="w-full max-w-[260px] md:max-w-[380px] aspect-[9/16] rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black relative flex items-center justify-center">
-                  <div className="absolute inset-0 w-full h-full scale-[1.02] flex items-center justify-center pointer-events-auto">
+                  <div className="w-full max-w-[260px] md:max-w-[360px] aspect-[9/16] rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black relative flex items-center justify-center">
                     <iframe 
                       src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
-                      className="w-full h-full border-0 absolute inset-0"
+                      className="w-full h-full border-0 absolute inset-0 object-cover pointer-events-none"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
                     ></iframe>
