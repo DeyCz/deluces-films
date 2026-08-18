@@ -199,21 +199,10 @@ export default function SlugClient({ slug }) {
   // FUNCIÓN MEJORADA PARA LIMPIAR LOS CONTROLES DE YOUTUBE
   const obtenerLinkEmbed = (url) => {
     if (!url) return '';
-    let embedUrl = url;
-    if (url.includes('youtube.com/watch?v=')) {
-      embedUrl = url.replace('watch?v=', 'embed/');
-    } else if (url.includes('youtu.be/')) {
-      embedUrl = url.replace('youtu.be/', 'youtube.com/embed/');
-    } else if (url.includes('drive.google.com') && url.includes('/view')) {
-      embedUrl = url.replace('/view', '/preview').replace('?usp=sharing', '');
-    }
-    
-    // Agregamos parámetros para ocultar controles molestos de YouTube
-    if (embedUrl.includes('youtube.com/embed/')) {
-      const separador = embedUrl.includes('?') ? '&' : '?';
-      return `${embedUrl}${separador}autoplay=1&controls=0&modestbranding=1&playsinline=1&rel=0`;
-    }
-    return embedUrl;
+    // Simplificamos: devolvemos el link limpio sin forzar autoplay=1 para que no falle el click
+    if (url.includes('youtube.com/watch?v=')) return url.replace('watch?v=', 'embed/');
+    if (url.includes('youtu.be/')) return url.replace('youtu.be/', 'youtube.com/embed/');
+    return url;
   };
 
   if (!data) return (
@@ -333,10 +322,10 @@ export default function SlugClient({ slug }) {
               {trabajoSeleccionado?.videoUrl ? (
                 /* Contenedor vertical 9:16 con truco para eliminar franjas laterales */
                 <div className="w-full max-w-[260px] md:max-w-[380px] aspect-[9/16] rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black relative flex items-center justify-center">
-                  <div className="w-full max-w-[260px] md:max-w-[360px] aspect-[9/16] rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black relative flex items-center justify-center">
+                  <div className="w-full max-w-[280px] md:max-w-[400px] aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 bg-black relative">
                     <iframe 
                       src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
-                      className="w-full h-full border-0 absolute inset-0 object-cover pointer-events-none"
+                      className="absolute top-[-10%] left-[-10%] w-[120%] h-[120%] border-0"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
                     ></iframe>
