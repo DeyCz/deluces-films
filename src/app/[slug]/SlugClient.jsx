@@ -315,13 +315,20 @@ export default function SlugClient({ slug }) {
           <div className="relative w-full max-w-4xl mx-auto flex flex-col items-center px-8 md:px-0">
             <div className="w-full flex justify-center items-center">
               {trabajoSeleccionado?.videoUrl ? (
-                <div className="w-full aspect-video rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
-                  <iframe 
-                    src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
-                    className="w-full h-full"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  ></iframe>
+                <div className="w-full relative">
+                  {/* Contenedor responsivo con aspect-ratio dinámico */}
+                  <div className="w-full aspect-video rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex items-center justify-center bg-black">
+                    <iframe 
+                      src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
+                      className="w-full h-full object-contain"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    ></iframe>
+                  </div>
+                  {/* Nota para el usuario en celular */}
+                  <p className="text-[10px] text-white/40 mt-3 text-center md:hidden">
+                    Gira tu celular para una mejor visualización
+                  </p>
                 </div>
               ) : (
                 <div className="relative">
