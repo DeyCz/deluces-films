@@ -286,72 +286,71 @@ export default function SlugClient({ slug }) {
         )}
       </section>
 
-      {/* MODAL PROFESIONAL CON NAVEGACIÓN */}
+      {/* MODAL PROFESIONAL ADAPTABLE (Optimizado para fotos y videos verticales/horizontales) */}
       {modalAbierto && (
-        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-6 animate-fade-in">
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 md:p-6 animate-fade-in overflow-y-auto">
           
-          <button onClick={cerrarModal} className="absolute top-6 right-6 z-50 text-white/50 hover:text-white p-2 transition-colors cursor-pointer">
-            <X size={32} strokeWidth={1.5} />
+          {/* Botón Cerrar */}
+          <button onClick={cerrarModal} className="absolute top-4 right-4 z-50 text-white/60 hover:text-white p-2.5 bg-black/40 rounded-full transition-colors cursor-pointer">
+            <X size={24} strokeWidth={1.5} />
           </button>
 
-          {/* Botones de Navegación (Solo si hay más de 1 foto) */}
+          {/* Botones de Navegación Lateral */}
           {galeriaFotos.length > 1 && (
             <>
               <button 
                 onClick={irAnterior}
-                className="absolute left-2 md:left-8 top-1/2 -translate-y-1/2 z-50 text-white/50 hover:text-white p-2 md:p-3 bg-black/20 hover:bg-black/60 rounded-full backdrop-blur-sm transition-all cursor-pointer"
+                className="absolute left-2 md:left-6 top-1/2 -translate-y-1/2 z-50 text-white/60 hover:text-white p-2 md:p-3 bg-black/40 hover:bg-black/80 rounded-full backdrop-blur-sm transition-all cursor-pointer"
               >
-                <ChevronLeft size={36} strokeWidth={1.5} />
+                <ChevronLeft size={32} strokeWidth={1.5} />
               </button>
               <button 
                 onClick={irSiguiente}
-                className="absolute right-2 md:right-8 top-1/2 -translate-y-1/2 z-50 text-white/50 hover:text-white p-2 md:p-3 bg-black/20 hover:bg-black/60 rounded-full backdrop-blur-sm transition-all cursor-pointer"
+                className="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 z-50 text-white/60 hover:text-white p-2 md:p-3 bg-black/40 hover:bg-black/80 rounded-full backdrop-blur-sm transition-all cursor-pointer"
               >
-                <ChevronRight size={36} strokeWidth={1.5} />
+                <ChevronRight size={32} strokeWidth={1.5} />
               </button>
             </>
           )}
 
-          <div className="relative w-full max-w-4xl mx-auto flex flex-col items-center px-8 md:px-0">
+          {/* Contenedor Principal (Usa max-h dinámico para no aplastar los botones abajo) */}
+          <div className="relative w-full max-w-sm md:max-w-4xl mx-auto flex flex-col items-center my-auto">
+            
+            {/* Área Multimedia Inteligente */}
             <div className="w-full flex justify-center items-center">
               {trabajoSeleccionado?.videoUrl ? (
-                <div className="w-full relative">
-                  {/* Contenedor responsivo con aspect-ratio dinámico */}
-                  <div className="w-full aspect-video rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex items-center justify-center bg-black">
-                    <iframe 
-                      src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
-                      className="w-full h-full object-contain"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    ></iframe>
-                  </div>
-                  {/* Nota para el usuario en celular */}
-                  <p className="text-[10px] text-white/40 mt-3 text-center md:hidden">
-                    Gira tu celular para una mejor visualización
-                  </p>
+                /* Contenedor vertical (aspect-[9/16]) para videos de celular, o horizontal si fuera el caso */
+                <div className="w-full max-w-[280px] md:max-w-[420px] aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black relative">
+                  <iframe 
+                    src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
+                    className="w-full h-full absolute inset-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  ></iframe>
                 </div>
               ) : (
                 <div className="relative">
                   <img 
                     src={trabajoSeleccionado?.imagenUrl} 
                     alt={trabajoSeleccionado?.titulo} 
-                    className="max-h-[65vh] w-auto max-w-full object-contain rounded-lg shadow-2xl ring-1 ring-white/10 select-none"
+                    className="max-h-[60vh] md:max-h-[68vh] w-auto max-w-full object-contain rounded-lg shadow-2xl ring-1 ring-white/10 select-none"
                   />
                 </div>
               )}
             </div>
 
-            <div className="mt-8 w-full flex flex-col md:flex-row items-center justify-between gap-6">
+            {/* Información y Botón de Cotización (Compactos y ordenados abajo) */}
+            <div className="mt-4 md:mt-6 w-full flex flex-col md:flex-row items-center justify-between gap-4 px-2 bg-black/40 md:bg-transparent p-4 md:p-0 rounded-xl backdrop-blur-sm md:backdrop-blur-none">
               <div className="text-center md:text-left">
-                <h3 className="text-xl md:text-2xl font-bold text-white tracking-wide">
+                <h3 className="text-lg md:text-xl font-bold text-white tracking-wide">
                   {trabajoSeleccionado?.titulo}
                 </h3>
-                <div className="flex items-center justify-center md:justify-start gap-3 mt-2">
-                  <p className="text-[11px] text-white/50 uppercase tracking-[0.2em] font-medium">
-                    {trabajoSeleccionado?.videoUrl ? 'Spot Audiovisual' : 'Registro Fotográfico'}
+                <div className="flex items-center justify-center md:justify-start gap-2 mt-1">
+                  <p className="text-[10px] text-white/50 uppercase tracking-[0.15em] font-medium">
+                    {trabajoSeleccionado?.videoUrl ? 'Reel / Video Vertical' : 'Fotografía'}
                   </p>
                   <span className="text-xs text-white/30">•</span>
-                  <p className="text-[11px] text-white/50 font-medium">
+                  <p className="text-[10px] text-white/50 font-medium">
                     {indiceActual + 1} / {galeriaFotos.length}
                   </p>
                 </div>
@@ -360,11 +359,12 @@ export default function SlugClient({ slug }) {
               <a 
                 href="#contacto-servicio" 
                 onClick={cerrarModal} 
-                className={`px-7 py-3 rounded-xl text-white text-sm font-bold transition-all shadow-lg hover:shadow-xl flex items-center gap-2 cursor-pointer ${data.colorText.replace('text-', 'bg-')}`}
+                className={`px-6 py-2.5 rounded-xl text-white text-xs md:text-sm font-bold transition-all shadow-lg hover:shadow-xl flex items-center gap-2 cursor-pointer ${data.colorText.replace('text-', 'bg-')}`}
               >
                 Cotizar este servicio
               </a>
             </div>
+
           </div>
         </div>
       )}
