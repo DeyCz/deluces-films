@@ -429,10 +429,10 @@ export default function SlugClient({ slug }) {
         </div>
         <div className="flex flex-col text-left">
           <span className="text-[9px] text-amber-500 font-bold uppercase tracking-widest leading-none mb-0.5">
-            Área Privada
+            ¿TIENES UN CÓDIGO?
           </span>
           <span className="text-xs font-bold text-white dark:text-black tracking-wide leading-none">
-            Ver mi galería
+            Descarga tu material
           </span>
         </div>
       </Link>
