@@ -199,18 +199,25 @@ export default function SlugClient({ slug }) {
   // FUNCIÓN MEJORADA PARA LIMPIAR LOS CONTROLES DE YOUTUBE
   const obtenerLinkEmbed = (url) => {
     if (!url) return '';
-    // Simplificamos: devolvemos el link limpio sin forzar autoplay=1 para que no falle el click
-    if (url.includes('youtube.com/watch?v=')) return url.replace('watch?v=', 'embed/');
-    if (url.includes('youtu.be/')) return url.replace('youtu.be/', 'youtube.com/embed/');
+
+    // CASO 1: Es de YouTube
+    if (url.includes('youtube.com/watch?v=')) {
+      return url.replace('watch?v=', 'embed/');
+    }
+    if (url.includes('youtu.be/')) {
+      return url.replace('youtu.be/', 'youtube.com/embed/');
+    }
+
+    // CASO 2: Es de Google Drive (Aquí estaba el error)
+    if (url.includes('drive.google.com/file/d/')) {
+      // Extraemos el ID del archivo y lo convertimos a formato preview
+      const fileId = url.split('/d/')[1].split('/')[0];
+      return `https://drive.google.com/file/d/${fileId}/preview`;
+    }
+
+    // Si no es ninguno, devolvemos la URL original
     return url;
   };
-
-  if (!data) return (
-    <div className="min-h-screen df-bg df-text flex flex-col items-center justify-center p-6 text-center">
-      <h1 className="text-4xl font-bold mb-4">Servicio no encontrado</h1>
-      <Link href="/" className="btn-shimmer text-white px-6 py-3 rounded-xl font-bold">Volver al Inicio</Link>
-    </div>
-  );
 
   const IconComponent = data.icono;
 
