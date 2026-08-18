@@ -286,47 +286,49 @@ export default function SlugClient({ slug }) {
         )}
       </section>
 
-      {/* MODAL PROFESIONAL ADAPTABLE (Optimizado para fotos y videos verticales/horizontales) */}
+      {/* MODAL PROFESIONAL OPTIMIZADO (Sin franjas negras y controles minimalistas) */}
       {modalAbierto && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 md:p-6 animate-fade-in overflow-y-auto">
           
-          {/* Botón Cerrar */}
-          <button onClick={cerrarModal} className="absolute top-4 right-4 z-50 text-white/60 hover:text-white p-2.5 bg-black/40 rounded-full transition-colors cursor-pointer">
-            <X size={24} strokeWidth={1.5} />
+          {/* Botón Cerrar (Más pequeño y estético) */}
+          <button onClick={cerrarModal} className="absolute top-4 right-4 z-50 text-white/60 hover:text-white p-2 bg-black/40 rounded-full transition-colors cursor-pointer">
+            <X size={20} strokeWidth={1.5} />
           </button>
 
-          {/* Botones de Navegación Lateral */}
+          {/* Botones de Navegación Lateral (Más pequeños y estilizados) */}
           {galeriaFotos.length > 1 && (
             <>
               <button 
                 onClick={irAnterior}
-                className="absolute left-2 md:left-6 top-1/2 -translate-y-1/2 z-50 text-white/60 hover:text-white p-2 md:p-3 bg-black/40 hover:bg-black/80 rounded-full backdrop-blur-sm transition-all cursor-pointer"
+                className="absolute left-2 md:left-6 top-1/2 -translate-y-1/2 z-50 text-white/60 hover:text-white p-2 bg-black/40 hover:bg-black/80 rounded-full backdrop-blur-sm transition-all cursor-pointer"
               >
-                <ChevronLeft size={32} strokeWidth={1.5} />
+                <ChevronLeft size={24} strokeWidth={1.5} />
               </button>
               <button 
                 onClick={irSiguiente}
-                className="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 z-50 text-white/60 hover:text-white p-2 md:p-3 bg-black/40 hover:bg-black/80 rounded-full backdrop-blur-sm transition-all cursor-pointer"
+                className="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 z-50 text-white/60 hover:text-white p-2 bg-black/40 hover:bg-black/80 rounded-full backdrop-blur-sm transition-all cursor-pointer"
               >
-                <ChevronRight size={32} strokeWidth={1.5} />
+                <ChevronRight size={24} strokeWidth={1.5} />
               </button>
             </>
           )}
 
-          {/* Contenedor Principal (Usa max-h dinámico para no aplastar los botones abajo) */}
+          {/* Contenedor Principal */}
           <div className="relative w-full max-w-sm md:max-w-4xl mx-auto flex flex-col items-center my-auto">
             
-            {/* Área Multimedia Inteligente */}
+            {/* Área Multimedia */}
             <div className="w-full flex justify-center items-center">
               {trabajoSeleccionado?.videoUrl ? (
-                /* Contenedor vertical (aspect-[9/16]) para videos de celular, o horizontal si fuera el caso */
-                <div className="w-full max-w-[280px] md:max-w-[420px] aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black relative">
-                  <iframe 
-                    src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
-                    className="w-full h-full absolute inset-0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  ></iframe>
+                /* Contenedor vertical 9:16 con truco para eliminar franjas laterales */
+                <div className="w-full max-w-[260px] md:max-w-[380px] aspect-[9/16] rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black relative flex items-center justify-center">
+                  <div className="absolute inset-0 w-full h-full scale-[1.02] flex items-center justify-center pointer-events-auto">
+                    <iframe 
+                      src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
+                      className="w-full h-full border-0 absolute inset-0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    ></iframe>
+                  </div>
                 </div>
               ) : (
                 <div className="relative">
@@ -339,10 +341,10 @@ export default function SlugClient({ slug }) {
               )}
             </div>
 
-            {/* Información y Botón de Cotización (Compactos y ordenados abajo) */}
-            <div className="mt-4 md:mt-6 w-full flex flex-col md:flex-row items-center justify-between gap-4 px-2 bg-black/40 md:bg-transparent p-4 md:p-0 rounded-xl backdrop-blur-sm md:backdrop-blur-none">
+            {/* Información y Botón de Cotización */}
+            <div className="mt-4 md:mt-6 w-full flex flex-col md:flex-row items-center justify-between gap-4 px-2 bg-black/40 md:bg-transparent p-3 md:p-0 rounded-xl backdrop-blur-sm md:backdrop-blur-none">
               <div className="text-center md:text-left">
-                <h3 className="text-lg md:text-xl font-bold text-white tracking-wide">
+                <h3 className="text-base md:text-xl font-bold text-white tracking-wide">
                   {trabajoSeleccionado?.titulo}
                 </h3>
                 <div className="flex items-center justify-center md:justify-start gap-2 mt-1">
@@ -359,7 +361,7 @@ export default function SlugClient({ slug }) {
               <a 
                 href="#contacto-servicio" 
                 onClick={cerrarModal} 
-                className={`px-6 py-2.5 rounded-xl text-white text-xs md:text-sm font-bold transition-all shadow-lg hover:shadow-xl flex items-center gap-2 cursor-pointer ${data.colorText.replace('text-', 'bg-')}`}
+                className={`px-5 py-2 rounded-xl text-white text-xs md:text-sm font-bold transition-all shadow-lg hover:shadow-xl flex items-center gap-2 cursor-pointer ${data.colorText.replace('text-', 'bg-')}`}
               >
                 Cotizar este servicio
               </a>
