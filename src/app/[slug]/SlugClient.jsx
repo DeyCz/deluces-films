@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Camera, Video, Film, ArrowLeft, Send, Play, X, Eye, ArrowUp, Sun, Moon, MapPin, Smartphone } from 'lucide-react';
+import { Camera, Video, Film, ArrowLeft, Send, Play, X, Eye, ArrowUp, Sun, Moon, MapPin, Smartphone, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
@@ -256,33 +256,64 @@ export default function SlugClient({ slug }) {
         )}
       </section>
 
-      {/* MODAL PARA FOTO O VIDEO */}
+      {/* MODAL PROFESIONAL (Proporciones controladas y elegantes) */}
       {modalAbierto && (
-        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
-          <div className="df-card border border-white/10 rounded-3xl max-w-4xl w-full p-4 md:p-6 relative shadow-2xl">
-            <button onClick={cerrarModal} className={`absolute -top-12 right-0 md:top-6 md:right-6 df-bg df-text p-2.5 rounded-full transition-all shadow-xs cursor-pointer hover:text-white ${data.colorText.replace('text-', 'hover:bg-')}`}>
-              <X size={20} />
-            </button>
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-6 animate-fade-in">
+          
+          {/* Botón Cerrar (Más minimalista) */}
+          <button 
+            onClick={cerrarModal} 
+            className="absolute top-6 right-6 z-50 text-white/50 hover:text-white p-2 transition-colors cursor-pointer"
+          >
+            <X size={32} strokeWidth={1.5} />
+          </button>
+
+          {/* Contenedor Principal Limitado (Da espacio para que la foto respire) */}
+          <div className="relative w-full max-w-4xl mx-auto flex flex-col items-center">
             
-            <h3 className="text-xl md:text-2xl font-bold df-text mb-4 mt-4 md:mt-0 px-2">{trabajoSeleccionado?.titulo}</h3>
-            
-            <div className="aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center relative shadow-inner mb-6 w-full">
+            {/* Área Multimedia */}
+            <div className="w-full flex justify-center items-center">
               {trabajoSeleccionado?.videoUrl ? (
-                <iframe 
-                  src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
-                  className="w-full h-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                ></iframe>
+                <div className="w-full aspect-video rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
+                  <iframe 
+                    src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
+                    className="w-full h-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  ></iframe>
+                </div>
               ) : (
-                <img src={trabajoSeleccionado?.imagenUrl} alt={trabajoSeleccionado?.titulo} className="w-full h-full object-contain"/>
+                <div className="relative">
+                  <img 
+                    src={trabajoSeleccionado?.imagenUrl} 
+                    alt={trabajoSeleccionado?.titulo} 
+                    // max-h-[65vh] controla que no se haga gigante de alto
+                    className="max-h-[65vh] w-auto max-w-full object-contain rounded-lg shadow-2xl ring-1 ring-white/10"
+                  />
+                </div>
               )}
             </div>
-            
-            <div className="flex justify-end gap-3 px-2">
-              <button onClick={cerrarModal} className="px-6 py-3 rounded-xl border df-border text-sm font-bold df-muted hover:df-text transition-colors cursor-pointer">Cerrar</button>
-              <a href="#contacto-servicio" onClick={cerrarModal} className={`px-6 py-3 rounded-xl text-white text-sm font-bold transition-all shadow-md text-center ${data.colorText.replace('text-', 'bg-')}`}>Cotizar proyecto similar</a>
+
+            {/* Información y Botón (Minimalistas) */}
+            <div className="mt-8 w-full flex flex-col md:flex-row items-center justify-between gap-6 px-2">
+              <div className="text-center md:text-left">
+                <h3 className="text-xl md:text-2xl font-bold text-white tracking-wide">
+                  {trabajoSeleccionado?.titulo}
+                </h3>
+                <p className="text-[11px] text-white/50 uppercase tracking-[0.2em] mt-2 font-medium">
+                  {trabajoSeleccionado?.videoUrl ? 'Spot Audiovisual' : 'Registro Fotográfico'}
+                </p>
+              </div>
+              
+              <a 
+                href="#contacto-servicio" 
+                onClick={cerrarModal} 
+                className={`px-7 py-3 rounded-xl text-white text-sm font-bold transition-all shadow-lg hover:shadow-xl flex items-center gap-2 cursor-pointer ${data.colorText.replace('text-', 'bg-')}`}
+              >
+                Cotizar este servicio
+              </a>
             </div>
+
           </div>
         </div>
       )}
@@ -342,6 +373,25 @@ export default function SlugClient({ slug }) {
           <ArrowUp size={20} />
         </button>
       )}
+
+      {/* BOTÓN FLOTANTE: ACCESO A CLIENTES (Esquina inferior izquierda) */}
+      <Link 
+        href="/clientes" 
+        className="fixed bottom-6 left-6 z-50 bg-black/95 dark:bg-white/95 backdrop-blur-md border border-white/20 dark:border-black/20 pl-2 pr-4 py-2 rounded-full shadow-2xl flex items-center gap-3 transition-transform duration-300 hover:scale-105 cursor-pointer"
+      >
+        <div className="bg-amber-600 rounded-full p-2 relative">
+          <span className="absolute inset-0 rounded-full bg-amber-600 animate-ping opacity-50"></span>
+          <Lock size={16} className="text-white relative z-10" />
+        </div>
+        <div className="flex flex-col text-left">
+          <span className="text-[9px] text-amber-500 font-bold uppercase tracking-widest leading-none mb-0.5">
+            ¿TIENES UN CÓDIGO?
+          </span>
+          <span className="text-xs font-bold text-white dark:text-black tracking-wide leading-none">
+            Descarga tu material
+          </span>
+        </div>
+      </Link>
 
       <a href="https://wa.me/51967576214?text=Hola,%20me%20interesa%20cotizar%20un%20servicio%20audiovisual." target="_blank" rel="noopener noreferrer" className="fixed bottom-6 right-6 z-50 bg-[#25D366] text-white p-3.5 rounded-full shadow-2xl whatsapp-pulse transition-all duration-300 flex items-center justify-center group cursor-pointer">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="white" className="flex-shrink-0"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448zM12.002 2.15c-5.436 0-9.851 4.415-9.853 9.852-.001 1.872.518 3.704 1.509 5.31l-1.004 3.673 3.766-.988c1.554.948 3.351 1.447 5.182 1.448 5.436 0 9.851-4.415 9.853-9.852.001-5.303-4.315-9.621-9.653-9.623zm5.367 13.916c-.225.635-1.309 1.181-1.801 1.259-.467.074-1.07.135-3.078-.696-2.613-1.088-4.316-3.76-4.448-3.935-.132-.176-1.066-1.417-1.066-2.703 0-1.286.669-1.916.907-2.174.238-.258.519-.323.691-.323.173 0 .346.001.498.008.161.008.379-.061.594.464.226.553.774 1.887.842 2.025.068.138.113.3.023.482-.09.183-.135.297-.27.458-.135.161-.284.36-.406.484-.135.138-.277.288-.12.56.157.272.698 1.155 1.499 1.871 1.033.921 1.904 1.206 2.176 1.344.272.138.432.115.592-.069.16-.184.686-.798.868-1.072.182-.274.364-.229.614-.138.25.092 1.586.748 1.856.884.27.135.45.203.516.315.066.113.066.653-.159 1.288z"/></svg>
