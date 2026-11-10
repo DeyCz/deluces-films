@@ -6,7 +6,7 @@ import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   ShieldCheck, PlusCircle, ArrowLeft, Image as ImageIcon, 
-  Trash2, Edit2, X, RefreshCw, Video, LogOut, Copy, Send, Search, Plus
+  Trash2, Edit2, X, RefreshCw, Video, LogOut, Copy, Send, Search, Plus, BookOpen
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -28,7 +28,7 @@ export default function AdminPage() {
   const [cargandoAuth, setCargandoAuth] = useState(false);
   const [refrescando, setRefrescando] = useState(false);
   
-  // ESTADOS CLIENTES (Soporta múltiples enlaces extra además del principal)
+  // ESTADOS CLIENTES (Soporta múltiples enlaces extra + Álbum Digital de fotos)
   const clienteInicial = { 
     nombreCliente: '', 
     password: '', 
@@ -36,7 +36,8 @@ export default function AdminPage() {
     fecha: '', 
     previewImage: '', 
     driveLink: '',
-    enlacesExtra: []
+    enlacesExtra: [],
+    albumFotosTexto: '' // Campo de texto rápido (1 link por línea) para el formulario
   };
   const [formCliente, setFormCliente] = useState(clienteInicial);
   const [cargandoCliente, setCargandoCliente] = useState(false);
@@ -44,7 +45,7 @@ export default function AdminPage() {
   const [editandoClienteId, setEditandoClienteId] = useState(null);
   const [busquedaCliente, setBusquedaCliente] = useState('');
 
-  // ESTADOS GALERÍA (Incluye orientación opcional para videos)
+  // ESTADOS GALERÍA PORTAFOLIO
   const galeriaInicial = { slug: 'institucional', titulo: '', orden: 1, imagenUrl: '', videoUrl: '', formatoVideo: 'vertical' };
   const [formGaleria, setFormGaleria] = useState(galeriaInicial);
   const [cargandoGaleria, setCargandoGaleria] = useState(false);
@@ -52,18 +53,14 @@ export default function AdminPage() {
   const [editandoFotoId, setEditandoFotoId] = useState(null);
   const [filtroCategoria, setFiltroCategoria] = useState('todas');
 
-  // VERIFICAR SESIÓN DE FIREBASE AUTH
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      if (currentUser) {
-        cargarDatos();
-      }
+      if (currentUser) cargarDatos();
     });
     return () => unsubscribe();
   }, []);
 
-  // CARGAR DATOS
   const cargarDatos = async () => {
     setRefrescando(true);
     try {
@@ -81,7 +78,6 @@ export default function AdminPage() {
     }
   };
 
-  // AUTO-CALCULAR ORDEN
   useEffect(() => {
     if (!editandoFotoId && user) {
       const fotosCategoria = listaGaleria.filter(foto => foto.slug === formGaleria.slug);
@@ -92,14 +88,12 @@ export default function AdminPage() {
     }
   }, [formGaleria.slug, listaGaleria, editandoFotoId, user]);
 
-  // LOGIN CON FIREBASE AUTH
   const handleLogin = async (e) => {
     e.preventDefault();
     setCargandoAuth(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (error) {
-      console.error("Error de autenticación:", error);
       alert('Correo o contraseña de administrador incorrectos');
     } finally {
       setCargandoAuth(false);
@@ -107,14 +101,10 @@ export default function AdminPage() {
   };
 
   const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("Error al cerrar sesión:", error);
-    }
+    await signOut(auth);
   };
 
-  // FUNCIONES PARA ENLACES ADICIONALES DE CLIENTE (Ej. Parte 1, Parte 2, Reel)
+  // ENLACES EXTRA DEL CLIENTE
   const agregarEnlaceExtra = () => {
     setFormCliente(prev => ({
       ...prev,
@@ -133,23 +123,30 @@ export default function AdminPage() {
     setFormCliente(prev => ({ ...prev, enlacesExtra: copia }));
   };
 
-  // LÓGICA CLIENTES
+  // GUARDAR CLIENTE (Procesa las líneas del Álbum Digital)
   const handleSubmitCliente = async (e) => {
     e.preventDefault();
     setCargandoCliente(true);
     try {
+      const listaFotosAlbum = (formCliente.albumFotosTexto || '')
+        .split('\n')
+        .map(linea => normalizarImagenUrl(linea))
+        .filter(url => url !== '');
+
       const datosLimpios = {
-        ...formCliente,
         nombreCliente: formCliente.nombreCliente.trim(),
         password: formCliente.password.trim(),
+        tipo: formCliente.tipo.trim(),
+        fecha: formCliente.fecha.trim(),
         previewImage: normalizarImagenUrl(formCliente.previewImage),
         driveLink: formCliente.driveLink.trim(),
-        enlacesExtra: (formCliente.enlacesExtra || []).filter(item => item.url?.trim() !== '')
+        enlacesExtra: (formCliente.enlacesExtra || []).filter(item => item.url?.trim() !== ''),
+        albumFotos: listaFotosAlbum
       };
 
       if (editandoClienteId) {
         await updateDoc(doc(db, "clientes", editandoClienteId), datosLimpios);
-        alert('¡Cliente actualizado correctamente!');
+        alert('¡Cliente y Álbum Digital actualizados correctamente!');
         setEditandoClienteId(null);
       } else {
         await addDoc(collection(db, "clientes"), { ...datosLimpios, createdAt: new Date() });
@@ -176,19 +173,19 @@ export default function AdminPage() {
     setFormCliente({
       ...clienteInicial,
       ...cliente,
-      enlacesExtra: Array.isArray(cliente.enlacesExtra) ? cliente.enlacesExtra : []
+      enlacesExtra: Array.isArray(cliente.enlacesExtra) ? cliente.enlacesExtra : [],
+      albumFotosTexto: Array.isArray(cliente.albumFotos) ? cliente.albumFotos.join('\n') : ''
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // GENERADOR DE MENSAJE DE ENTREGA PARA WHATSAPP
   const armarMensajeEntrega = (cliente) => {
-    return `¡Hola! 👋✨ Espero que se encuentren muy bien.\n\nMe emociona avisarles que ya están listos los archivos de *${cliente.nombreCliente}* (${cliente.tipo}). 📸🎥🎉\n\nPara ver y descargar todo su material en alta calidad, pueden ingresar directamente a nuestra plataforma web:\n\n🌐 *Enlace:* https://deluces-films.vercel.app/clientes?code=${encodeURIComponent(cliente.password)}\n🔑 *Contraseña:* ${cliente.password}\n\nDe parte de *Deluces Films*, muchas gracias por confiar en nosotros para capturar estos recuerdos. ¡Que lo disfruten muchísimo! 🥂🎬`;
+    return `¡Hola! 👋✨ Espero que se encuentren muy bien.\n\nMe emociona avisarles que ya están listos los archivos y el Álbum Digital de *${cliente.nombreCliente}* (${cliente.tipo}). 📸🎥🎉\n\nPara ver su álbum interactivo y descargar todo su material en alta calidad, pueden ingresar directamente a nuestra plataforma web:\n\n🌐 *Enlace directo:* https://deluces-films.vercel.app/clientes?code=${encodeURIComponent(cliente.password)}\n🔑 *Contraseña:* ${cliente.password}\n\nDe parte de *Deluces Films*, muchas gracias por confiar en nosotros para capturar estos recuerdos. ¡Que lo disfruten muchísimo! 🥂🎬`;
   };
 
   const copiarMensajeCliente = (cliente) => {
     navigator.clipboard.writeText(armarMensajeEntrega(cliente));
-    alert(`¡Mensaje de entrega para "${cliente.nombreCliente}" copiado al portapapeles!`);
+    alert(`¡Mensaje de entrega para "${cliente.nombreCliente}" copiado!`);
   };
 
   const enviarWhatsAppCliente = (cliente) => {
@@ -196,7 +193,7 @@ export default function AdminPage() {
     window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
   };
 
-  // LÓGICA GALERÍA
+  // LÓGICA GALERÍA PORTAFOLIO
   const handleSubmitGaleria = async (e) => {
     e.preventDefault();
     setCargandoGaleria(true);
@@ -243,10 +240,9 @@ export default function AdminPage() {
       videoUrl: foto.videoUrl || '',
       formatoVideo: foto.formatoVideo || 'vertical'
     });
-    window.scrollTo({ top: 500, behavior: 'smooth' });
+    window.scrollTo({ top: 600, behavior: 'smooth' });
   };
 
-  // UI LOGIN (FIREBASE AUTHENTICATION)
   if (!user) {
     return (
       <div className="min-h-screen df-bg flex items-center justify-center p-6 relative">
@@ -258,28 +254,10 @@ export default function AdminPage() {
           <h1 className="text-2xl font-bold df-text mb-2">Panel Administrativo</h1>
           <p className="df-muted text-sm mb-6">Ingresa tus credenciales seguras.</p>
           
-          <input 
-            type="email" 
-            value={email} 
-            onChange={(e) => setEmail(e.target.value)} 
-            className="w-full df-card border df-border rounded-xl px-4 py-3 mb-3 text-sm outline-none focus:border-amber-600 df-text" 
-            placeholder="Correo electrónico" 
-            required 
-          />
-          <input 
-            type="password" 
-            value={password} 
-            onChange={(e) => setPassword(e.target.value)} 
-            className="w-full df-card border df-border rounded-xl px-4 py-3 mb-6 text-sm outline-none focus:border-amber-600 df-text" 
-            placeholder="Contraseña" 
-            required 
-          />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full df-card border df-border rounded-xl px-4 py-3 mb-3 text-sm outline-none focus:border-amber-600 df-text" placeholder="Correo electrónico" required />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full df-card border df-border rounded-xl px-4 py-3 mb-6 text-sm outline-none focus:border-amber-600 df-text" placeholder="Contraseña" required />
           
-          <button 
-            type="submit" 
-            disabled={cargandoAuth} 
-            className="w-full bg-amber-600 text-white font-bold py-3.5 rounded-xl hover:bg-amber-700 transition-all cursor-pointer text-sm shadow-md"
-          >
+          <button type="submit" disabled={cargandoAuth} className="w-full bg-amber-600 text-white font-bold py-3.5 rounded-xl hover:bg-amber-700 transition-all cursor-pointer text-sm shadow-md">
             {cargandoAuth ? 'Verificando...' : 'Entrar al Panel'}
           </button>
         </form>
@@ -296,7 +274,6 @@ export default function AdminPage() {
     ? listaGaleria 
     : listaGaleria.filter(f => f.slug === filtroCategoria);
 
-  // UI ADMIN (AUTENTICADO)
   return (
     <div className="min-h-screen df-bg py-16 px-6">
       <div className="max-w-5xl mx-auto space-y-12">
@@ -306,23 +283,14 @@ export default function AdminPage() {
             <h1 className="text-3xl font-black df-text mt-1">Panel de Control</h1>
           </div>
           <div className="flex items-center gap-4">
-            <button 
-              onClick={cargarDatos} 
-              disabled={refrescando}
-              className={`text-sm flex items-center gap-2 transition-all cursor-pointer ${refrescando ? 'text-amber-500' : 'df-muted hover:text-amber-500'}`} 
-              title="Refrescar Datos"
-            >
+            <button onClick={cargarDatos} disabled={refrescando} className={`text-sm flex items-center gap-2 transition-all cursor-pointer ${refrescando ? 'text-amber-500' : 'df-muted hover:text-amber-500'}`}>
               <RefreshCw size={16} className={refrescando ? "animate-spin" : ""} /> 
               {refrescando ? 'Actualizando...' : 'Actualizar'}
             </button>
             <Link href="/" className="text-sm df-muted hover:df-text flex items-center gap-2 ml-2 border-l df-border pl-4">
               <ArrowLeft size={16} /> Ver Web
             </Link>
-            <button 
-              onClick={handleLogout} 
-              className="text-sm text-red-500 hover:text-red-600 flex items-center gap-1.5 ml-2 transition-colors cursor-pointer"
-              title="Cerrar Sesión"
-            >
+            <button onClick={handleLogout} className="text-sm text-red-500 hover:text-red-600 flex items-center gap-1.5 ml-2 transition-colors cursor-pointer">
               <LogOut size={16} /> Salir
             </button>
           </div>
@@ -331,11 +299,11 @@ export default function AdminPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="space-y-8">
             
-            {/* FORMULARIO CLIENTES */}
+            {/* FORMULARIO CLIENTES + ÁLBUM DIGITAL */}
             <div className="df-card border df-border p-8 rounded-3xl shadow-xl transition-all">
               <div className="mb-6 flex justify-between items-center">
                 <div>
-                  <span className="text-xs uppercase tracking-widest font-bold text-amber-600">Acceso Privado</span>
+                  <span className="text-xs uppercase tracking-widest font-bold text-amber-600">Acceso Privado & Álbum</span>
                   <h2 className="text-xl font-bold df-text mt-1">{editandoClienteId ? 'Editar Cliente' : 'Registrar Cliente'}</h2>
                 </div>
                 {editandoClienteId && (
@@ -345,25 +313,42 @@ export default function AdminPage() {
                 )}
               </div>
               <form onSubmit={handleSubmitCliente} className="space-y-4">
-                <input type="text" value={formCliente.nombreCliente} onChange={e => setFormCliente({...formCliente, nombreCliente: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Nombre del Cliente o Evento (Ej. Promoción 6to A - Almirante Grau)" />
+                <input type="text" value={formCliente.nombreCliente} onChange={e => setFormCliente({...formCliente, nombreCliente: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Nombre del Cliente o Evento" />
                 <input type="text" value={formCliente.password} onChange={e => setFormCliente({...formCliente, password: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Contraseña (Ej. 6A2026)" />
                 <div className="grid grid-cols-2 gap-3">
                   <input type="text" value={formCliente.tipo} onChange={e => setFormCliente({...formCliente, tipo: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Tipo de Evento" />
-                  <input type="text" value={formCliente.fecha} onChange={e => setFormCliente({...formCliente, fecha: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Fecha (Ej. 15 Septiembre)" />
+                  <input type="text" value={formCliente.fecha} onChange={e => setFormCliente({...formCliente, fecha: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Fecha (Ej. 15 Octubre)" />
                 </div>
-                <input type="url" value={formCliente.previewImage} onChange={e => setFormCliente({...formCliente, previewImage: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="URL Foto Portada (acepta link normal de Drive)" />
-                <input type="url" value={formCliente.driveLink} onChange={e => setFormCliente({...formCliente, driveLink: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Link Principal de Google Drive (Carpeta o Video)" />
+                <input type="url" value={formCliente.previewImage} onChange={e => setFormCliente({...formCliente, previewImage: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="URL Foto de Portada (acepta link de Drive)" />
+                <input type="url" value={formCliente.driveLink} onChange={e => setFormCliente({...formCliente, driveLink: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Link Principal de Google Drive (Carpeta completa)" />
 
-                {/* ENLACES EXTRA (Ej: Video Parte 1, Parte 2, Reel, etc.) */}
-                <div className="pt-2 space-y-3">
+                {/* NUEVA SECCIÓN: ÁLBUM DIGITAL INTERACTIVO */}
+                <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-2">
+                  <label className="text-[11px] font-bold uppercase text-amber-600 flex items-center gap-1.5">
+                    <BookOpen size={14}/> Álbum Digital Interactivo (Opcional)
+                  </label>
+                  <textarea 
+                    rows="4"
+                    value={formCliente.albumFotosTexto}
+                    onChange={e => setFormCliente({...formCliente, albumFotosTexto: e.target.value})}
+                    placeholder={"Pega aquí los enlaces de las mejores fotos (1 link por línea).\nAcepta links compartidos de Google Drive o enlaces directos."}
+                    className="w-full df-bg border df-border rounded-xl px-3 py-2.5 text-xs focus:border-amber-600 df-text outline-none resize-y"
+                  />
+                  <p className="text-[10px] df-muted leading-tight">
+                    El cliente verá estas fotos en un álbum elegante dentro de la web, podrá abrirlas en pantalla completa, elegir sus favoritas (❤️) y enviarte su selección por WhatsApp.
+                  </p>
+                </div>
+
+                {/* ENLACES EXTRA (Ej: Video Parte 1, Parte 2, Reel) */}
+                <div className="pt-1 space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-[11px] font-bold uppercase tracking-wider df-muted">Enlaces o Partes Adicionales (Opcional)</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider df-muted">Videos o Carpetas Adicionales</span>
                     <button type="button" onClick={agregarEnlaceExtra} className="text-xs font-bold text-amber-600 hover:text-amber-500 flex items-center gap-1 cursor-pointer">
                       <Plus size={14} /> Añadir enlace
                     </button>
                   </div>
                   {(formCliente.enlacesExtra || []).map((item, idx) => (
-                    <div key={idx} className="p-3 df-bg border df-border rounded-xl space-y-2 relative">
+                    <div key={idx} className="p-3 df-bg border df-border rounded-xl space-y-2">
                       <div className="flex items-center gap-2">
                         <input 
                           type="text" 
@@ -393,7 +378,7 @@ export default function AdminPage() {
               </form>
             </div>
 
-            {/* FORMULARIO GALERÍA (CON OPCIÓN DE VIDEO) */}
+            {/* FORMULARIO GALERÍA PORTAFOLIO */}
             <div className="df-card border df-border p-8 rounded-3xl shadow-xl transition-all">
               <div className="mb-6 flex justify-between items-center">
                 <div>
@@ -456,7 +441,6 @@ export default function AdminPage() {
                       </select>
                     </div>
                   )}
-                  <p className="text-[10px] text-blue-500/70 leading-tight">Si lo dejas en blanco, se mostrará como fotografía. Si pones un link, se abrirá como reproductor de video.</p>
                 </div>
 
                 <button type="submit" disabled={cargandoGaleria} className={`w-full text-white font-bold py-4 rounded-xl shadow-md flex items-center justify-center gap-2 mt-6 text-sm cursor-pointer ${editandoFotoId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
@@ -490,30 +474,23 @@ export default function AdminPage() {
                   <div key={cliente.id} className="flex justify-between items-center p-3 df-bg rounded-xl border df-border group hover:border-amber-500/50 transition-colors gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold df-text truncate">{cliente.nombreCliente}</p>
-                      <p className="text-xs df-muted">
-                        Pass: <span className="font-semibold text-amber-600">{cliente.password}</span>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                        <span className="text-xs df-muted">Pass: <strong className="text-amber-600">{cliente.password}</strong></span>
+                        {Array.isArray(cliente.albumFotos) && cliente.albumFotos.length > 0 && (
+                          <span className="text-[10px] bg-amber-600/10 text-amber-600 px-1.5 py-0.5 rounded font-semibold">
+                            📸 {cliente.albumFotos.length} fotos
+                          </span>
+                        )}
                         {Array.isArray(cliente.enlacesExtra) && cliente.enlacesExtra.length > 0 && (
-                          <span className="ml-2 text-[10px] bg-amber-600/10 text-amber-600 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-semibold">
                             +{cliente.enlacesExtra.length} links
                           </span>
                         )}
-                      </p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <button 
-                        onClick={() => copiarMensajeCliente(cliente)} 
-                        className="p-1.5 bg-amber-500/10 text-amber-600 rounded-md hover:bg-amber-600 hover:text-white transition-colors cursor-pointer" 
-                        title="Copiar mensaje de entrega"
-                      >
-                        <Copy size={14}/>
-                      </button>
-                      <button 
-                        onClick={() => enviarWhatsAppCliente(cliente)} 
-                        className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-md hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer" 
-                        title="Enviar acceso por WhatsApp"
-                      >
-                        <Send size={14}/>
-                      </button>
+                      <button onClick={() => copiarMensajeCliente(cliente)} className="p-1.5 bg-amber-500/10 text-amber-600 rounded-md hover:bg-amber-600 hover:text-white transition-colors cursor-pointer" title="Copiar mensaje de entrega"><Copy size={14}/></button>
+                      <button onClick={() => enviarWhatsAppCliente(cliente)} className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-md hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer" title="Enviar acceso por WhatsApp"><Send size={14}/></button>
                       <button onClick={() => prepararEdicionCliente(cliente)} className="p-1.5 bg-blue-500/10 text-blue-500 rounded-md hover:bg-blue-500 hover:text-white transition-colors cursor-pointer" title="Editar"><Edit2 size={14}/></button>
                       <button onClick={() => eliminarCliente(cliente.id)} className="p-1.5 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-colors cursor-pointer" title="Eliminar"><Trash2 size={14}/></button>
                     </div>
@@ -522,7 +499,7 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* LISTA GALERÍA CON FILTRO POR CATEGORÍA */}
+            {/* LISTA GALERÍA PORTAFOLIO */}
             <div className="df-card border df-border p-6 rounded-3xl shadow-md">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                 <h3 className="font-bold df-text">Portafolio Web ({galeriaFiltrada.length})</h3>
@@ -554,9 +531,7 @@ export default function AdminPage() {
                       </div>
                       <div className="flex-1 pr-2 min-w-0">
                         <p className="text-sm font-bold df-text truncate">{foto.titulo || 'Sin título'}</p>
-                        <p className="text-[10px] font-bold text-amber-600 tracking-wider">
-                          /{foto.slug} <span className="df-muted font-normal">(Orden: {foto.orden})</span>
-                        </p>
+                        <p className="text-[10px] font-bold text-amber-600 tracking-wider">/{foto.slug} <span className="df-muted font-normal">(Orden: {foto.orden})</span></p>
                       </div>
                     </div>
                     <div className="flex gap-2">
