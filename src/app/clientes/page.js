@@ -1,13 +1,26 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { 
   Lock, LogOut, Download, ArrowLeft, Eye, EyeOff, Play, Pause,
-  Film, FolderOpen, X, Heart, ChevronLeft, ChevronRight, Share2, Send, Sparkles
+  Film, FolderOpen, X, Heart, ChevronLeft, ChevronRight, Share2, 
+  Send, Sparkles, Volume2, VolumeX, Star, Frame, BookOpen, Gift, CheckCircle2
 } from 'lucide-react';
 import Link from 'next/link';
+
+const NUMERO_DELUCES = '51967576214';
+
+// Genera URL universal de WhatsApp que funciona en Celular, WhatsApp Web y App de PC
+const crearUrlWhatsApp = (telefono, texto) => {
+  const textoCodificado = encodeURIComponent(texto);
+  const numeroLimpio = (telefono || '').replace(/\D/g, '');
+  if (numeroLimpio) {
+    return `https://api.whatsapp.com/send?phone=${numeroLimpio}&text=${textoCodificado}`;
+  }
+  return `https://api.whatsapp.com/send?text=${textoCodificado}`;
+};
 
 const formatearImagenDrive = (url) => {
   if (!url) return '/institucional.jpg';
@@ -18,7 +31,6 @@ const formatearImagenDrive = (url) => {
   return url;
 };
 
-// Genera link de descarga directa si la foto viene de Google Drive
 const obtenerLinkDescargaFoto = (url) => {
   if (!url) return '#';
   if (url.includes('drive.google.com/thumbnail?id=')) {
@@ -66,7 +78,20 @@ export default function AreaClientes() {
   const [soloFavoritas, setSoloFavoritas] = useState(false);
   const [fotoModalIndex, setFotoModalIndex] = useState(null);
   const [modoPresentacion, setModoPresentacion] = useState(false);
+  const [musicaActiva, setMusicaActiva] = useState(true);
   const [touchStartX, setTouchStartX] = useState(null);
+
+  // Estados de Reseña / Testimonio al descargar
+  const [modalResenaAbierto, setModalResenaAbierto] = useState(false);
+  const [estrellas, setEstrellas] = useState(5);
+  const [comentarioResena, setComentarioResena] = useState('');
+  const [autorResena, setAutorResena] = useState('');
+  const [enviandoResena, setEnviandoResena] = useState(false);
+  const [resenaEnviada, setResenaEnviada] = useState(false);
+
+  // Referencias para música instrumental nativa (Web Audio API)
+  const audioCtxRef = useRef(null);
+  const musicIntervalRef = useRef(null);
 
   // Cargar sesión o autologin desde ?code=
   useEffect(() => {
@@ -75,8 +100,11 @@ export default function AreaClientes() {
       try {
         const parsed = JSON.parse(savedClient);
         setClienteActual(parsed);
+        setAutorResena(parsed.nombreCliente || '');
         const savedFavs = localStorage.getItem(`favs_${parsed.password}`);
         if (savedFavs) setFavoritas(JSON.parse(savedFavs));
+        const yaDejoResena = localStorage.getItem(`resena_${parsed.password}`);
+        if (yaDejoResena) setResenaEnviada(true);
       } catch (e) {
         sessionStorage.removeItem('deluces_cliente_actual');
       }
@@ -116,9 +144,12 @@ export default function AreaClientes() {
 
       if (datosEncontrados) {
         setClienteActual(datosEncontrados);
+        setAutorResena(datosEncontrados.nombreCliente || '');
         sessionStorage.setItem('deluces_cliente_actual', JSON.stringify(datosEncontrados));
         const savedFavs = localStorage.getItem(`favs_${datosEncontrados.password}`);
         setFavoritas(savedFavs ? JSON.parse(savedFavs) : []);
+        const yaDejoResena = localStorage.getItem(`resena_${datosEncontrados.password}`);
+        setResenaEnviada(Boolean(yaDejoResena));
       } else {
         setError(true);
       }
@@ -135,7 +166,73 @@ export default function AreaClientes() {
     await buscarClientePorCodigo(passwordInput);
   };
 
+  const detenerMusica = () => {
+    if (musicIntervalRef.current) {
+      clearInterval(musicIntervalRef.current);
+      musicIntervalRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+  };
+
+  const iniciarMusicaAmbiental = () => {
+    detenerMusica();
+    if (typeof window === 'undefined') return;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    const ctx = new AudioContextClass();
+    audioCtxRef.current = ctx;
+
+    // Progresión emotiva suave estilo piano cinematográfico (Do mayor -> La menor -> Fa -> Sol)
+    const acordes = [
+      [261.63, 329.63, 392.00, 523.25], // C
+      [220.00, 261.63, 329.63, 440.00], // Am
+      [174.61, 220.00, 261.63, 349.23], // F
+      [196.00, 246.94, 293.66, 392.00]  // G
+    ];
+    let paso = 0;
+
+    const tocarAcorde = () => {
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') return;
+      const notas = acordes[paso % acordes.length];
+      notas.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = idx === 0 ? 'sine' : 'triangle';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.35);
+
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime + idx * 0.35);
+        gain.gain.exponentialRampToValueAtTime(0.035, ctx.currentTime + idx * 0.35 + 0.6);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + idx * 0.35 + 3.2);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(ctx.currentTime + idx * 0.35);
+        osc.stop(ctx.currentTime + idx * 0.35 + 3.3);
+      });
+      paso++;
+    };
+
+    tocarAcorde();
+    musicIntervalRef.current = setInterval(tocarAcorde, 3500);
+  };
+
+  // Controlar encendido/apagado de música durante la presentación
+  useEffect(() => {
+    if (modoPresentacion && fotoModalIndex !== null && musicaActiva) {
+      iniciarMusicaAmbiental();
+    } else {
+      detenerMusica();
+    }
+    return () => detenerMusica();
+  }, [modoPresentacion, fotoModalIndex, musicaActiva]);
+
   const cerrarSesionCliente = () => {
+    detenerMusica();
     setClienteActual(null);
     setVideoActivo(null);
     setFotoModalIndex(null);
@@ -158,18 +255,54 @@ export default function AreaClientes() {
     }
   };
 
-  // Enviar selección de fotos favoritas por WhatsApp (ideal para Cuadros / Álbum físico)
-  const enviarFavoritasWhatsApp = () => {
-    const numerosFotos = favoritas.map(idx => `Foto #${idx + 1}`).join(', ');
-    const texto = `¡Hola Deluces Films! 📸✨ Soy de *${clienteActual.nombreCliente}*.\nHe revisado mi Álbum Digital y estas son mis *${favoritas.length} fotos favoritas* seleccionadas (para cuadro / impresión / retoque):\n\n❤️ *Selección:* ${numerosFotos}`;
-    window.open(`https://wa.me/51967576214?text=${encodeURIComponent(texto)}`, '_blank');
+  // Textos listos para enlaces directos de WhatsApp (sin bloqueos de popup)
+  const numerosFotosFavoritas = favoritas.map(idx => `Foto #${idx + 1}`).join(', ');
+  const textoWhatsAppFavoritas = clienteActual
+    ? `¡Hola Deluces Films! 📸✨ Soy de *${clienteActual.nombreCliente}*.\nHe revisado mi Álbum Digital y estas son mis *${favoritas.length} fotos favoritas* seleccionadas:\n\n❤️ *Selección:* ${numerosFotosFavoritas}`
+    : '';
+
+  const urlCompartirFamilia = clienteActual
+    ? crearUrlWhatsApp(
+        '',
+        `¡Mira las fotos y videos de *${clienteActual.nombreCliente}* capturados por Deluces Films! 📸🎬\n\nIngresa aquí para ver el álbum digital:\n👉 https://deluces-films.vercel.app/clientes?code=${encodeURIComponent(clienteActual.password)}\n🔑 Código: ${clienteActual.password}`
+      )
+    : '#';
+
+  // Función al hacer clic en Descargar: abre el modal de reseña si aún no ha calificado
+  const registrarDescargaYMostrarResena = () => {
+    if (!resenaEnviada) {
+      setTimeout(() => {
+        setModalResenaAbierto(true);
+      }, 1200);
+    }
   };
 
-  // Compartir galería con familiares por WhatsApp
-  const compartirConFamilia = () => {
-    const urlDirecta = `https://deluces-films.vercel.app/clientes?code=${encodeURIComponent(clienteActual.password)}`;
-    const texto = `¡Mira las fotos y videos de *${clienteActual.nombreCliente}* capturados por Deluces Films! 📸🎬\n\nIngresa aquí para ver el álbum digital:\n👉 ${urlDirecta}\n🔑 Código: ${clienteActual.password}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
+  // Guardar Reseña / Testimonio en Firebase
+  const handleEnviarResena = async (e) => {
+    e.preventDefault();
+    if (!comentarioResena.trim()) return;
+    setEnviandoResena(true);
+    try {
+      await addDoc(collection(db, "testimonios"), {
+        nombreCliente: autorResena.trim() || clienteActual.nombreCliente,
+        evento: clienteActual.tipo || 'Cliente Deluces Films',
+        estrellas: Number(estrellas) || 5,
+        comentario: comentarioResena.trim(),
+        fecha: clienteActual.fecha || '2026',
+        createdAt: new Date()
+      });
+      localStorage.setItem(`resena_${clienteActual.password}`, 'true');
+      setResenaEnviada(true);
+      setTimeout(() => {
+        setModalResenaAbierto(false);
+      }, 1800);
+    } catch (err) {
+      console.error("Error al guardar testimonio:", err);
+      alert("Muchas gracias por tu comentario.");
+      setModalResenaAbierto(false);
+    } finally {
+      setEnviandoResena(false);
+    }
   };
 
   // Navegación del Visor de Álbum (Lightbox)
@@ -265,14 +398,26 @@ export default function AreaClientes() {
       <div className="max-w-5xl mx-auto space-y-10">
         
         {/* BARRA SUPERIOR */}
-        <div className="flex justify-between items-center">
+        <div className="flex flex-wrap justify-between items-center gap-3">
           <button onClick={cerrarSesionCliente} className="text-sm df-muted hover:df-text flex items-center gap-2 cursor-pointer">
             <ArrowLeft size={16} /> Cambiar código
           </button>
           <div className="flex items-center gap-4">
-            <button onClick={compartirConFamilia} className="text-xs font-bold text-amber-600 hover:text-amber-500 flex items-center gap-1.5 cursor-pointer">
-              <Share2 size={15} /> Compartir con familia
+            <button 
+              type="button"
+              onClick={() => setModalResenaAbierto(true)} 
+              className="text-xs font-bold text-amber-500 hover:text-amber-400 flex items-center gap-1.5 cursor-pointer"
+            >
+              <Star size={15} fill="currentColor" /> {resenaEnviada ? '¡Gracias por tu reseña!' : 'Calificar Servicio'}
             </button>
+            <a 
+              href={urlCompartirFamilia}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-bold text-amber-600 hover:text-amber-500 flex items-center gap-1.5 cursor-pointer"
+            >
+              <Share2 size={15} /> Compartir con familia
+            </a>
             <button onClick={cerrarSesionCliente} className="text-sm df-muted hover:text-red-500 flex items-center gap-1.5 cursor-pointer transition-colors">
               <LogOut size={16} /> Salir
             </button>
@@ -305,19 +450,29 @@ export default function AreaClientes() {
               </div>
               {fotosDelAlbum.length > 0 && (
                 <button
+                  type="button"
                   onClick={() => { setFotoModalIndex(0); setModoPresentacion(true); }}
-                  className="bg-white/15 hover:bg-amber-600 backdrop-blur-md text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer w-fit"
+                  className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg transition-all cursor-pointer w-fit"
                 >
-                  <Play size={14} fill="currentColor" /> Reproducir Álbum ({fotosDelAlbum.length} fotos)
+                  <Play size={14} fill="currentColor" /> Reproducir Álbum con Música ({fotosDelAlbum.length} fotos)
                 </button>
               )}
             </div>
           </div>
           
           <div className="p-6 md:p-8 space-y-6">
-            <p className="df-muted text-sm">
-              Accede a tus carpetas completas y videos en máxima resolución listos para ver o descargar:
-            </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <p className="df-muted text-sm">
+                Accede a tus carpetas completas y videos en máxima resolución listos para ver o descargar:
+              </p>
+              <button
+                type="button"
+                onClick={() => setModalResenaAbierto(true)}
+                className="text-xs font-bold text-amber-600 hover:underline flex items-center gap-1.5 cursor-pointer w-fit"
+              >
+                <Star size={14} fill="currentColor" /> Dejar una reseña de mi experiencia
+              </button>
+            </div>
 
             <div className="grid grid-cols-1 gap-4">
               {entregables.map((item, idx) => {
@@ -348,7 +503,8 @@ export default function AreaClientes() {
                       <a 
                         href={item.url} 
                         target="_blank" 
-                        rel="noopener noreferrer" 
+                        rel="noopener noreferrer"
+                        onClick={registrarDescargaYMostrarResena}
                         className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-amber-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-amber-700 transition-all shadow-md cursor-pointer text-xs md:text-sm"
                       >
                         <Download size={17} /> Descargar
@@ -381,7 +537,7 @@ export default function AreaClientes() {
         </div>
 
         {/* ==================================================== */}
-        {/* NUEVA SECCIÓN: ÁLBUM DIGITAL INTERACTIVO DE FOTOS    */}
+        {/* SECCIÓN: ÁLBUM DIGITAL INTERACTIVO DE FOTOS          */}
         {/* ==================================================== */}
         {fotosDelAlbum.length > 0 && (
           <div className="df-card border df-border rounded-3xl p-6 md:p-8 shadow-xl space-y-6">
@@ -392,12 +548,13 @@ export default function AreaClientes() {
                 </span>
                 <h2 className="text-2xl font-extrabold df-text mt-1">Selección de Fotografías ({fotosDelAlbum.length})</h2>
                 <p className="text-xs df-muted mt-1">
-                  Toca cualquier foto para verla en pantalla completa o marca con el corazón (❤️) tus favoritas para tu cuadro o impresión.
+                  Toca cualquier foto para abrirla en pantalla completa o marca con el corazón (❤️) tus favoritas para tu cuadro o álbum impreso.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => setSoloFavoritas(!soloFavoritas)}
                   className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
                     soloFavoritas 
@@ -410,12 +567,14 @@ export default function AreaClientes() {
                 </button>
 
                 {favoritas.length > 0 && (
-                  <button
-                    onClick={enviarFavoritasWhatsApp}
+                  <a
+                    href={crearUrlWhatsApp(NUMERO_DELUCES, textoWhatsAppFavoritas)}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="bg-[#25D366] hover:bg-[#20bd5a] text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
                   >
-                    <Send size={14} /> Enviar mis {favoritas.length} favoritas a Deluces
-                  </button>
+                    <Send size={14} /> Enviar mis {favoritas.length} favoritas por WhatsApp
+                  </a>
                 )}
               </div>
             </div>
@@ -440,12 +599,10 @@ export default function AreaClientes() {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-60 group-hover:opacity-90 transition-opacity" />
 
-                    {/* Número de Foto */}
                     <span className="absolute bottom-2.5 left-3 text-[11px] font-bold text-white/90 drop-shadow">
                       #{index + 1}
                     </span>
 
-                    {/* Botón Corazón (Favorita) */}
                     <button
                       type="button"
                       onClick={(e) => toggleFavorita(index, e)}
@@ -463,10 +620,106 @@ export default function AreaClientes() {
           </div>
         )}
 
+        {/* ==================================================== */}
+        {/* BANNER DE UPSELLING: CUADRO FÍSICO O ÁLBUM IMPRESO   */}
+        {/* ==================================================== */}
+        <div className="df-card border-2 border-amber-600/40 rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
+            <div>
+              <span className="text-[10px] uppercase tracking-widest font-bold bg-amber-600/15 text-amber-600 px-3 py-1 rounded-full inline-flex items-center gap-1.5">
+                <Gift size={12} /> Recuerdos Impresos Deluces Films
+              </span>
+              <h2 className="text-2xl md:text-3xl font-black df-text mt-2">
+                ¿Te encantó tu foto favorita? Pide tu Cuadro o Álbum Físico
+              </h2>
+              <p className="df-muted text-sm mt-1 max-w-2xl">
+                Inmortaliza tus mejores fotografías en acabado profesional de alta durabilidad. Selecciona tus fotos favoritas con el corazón (❤️) en tu álbum o escríbenos directo para prepararlo:
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* OPCIÓN 1: CUADRO ENMARCADO */}
+            <div className="df-bg border df-border rounded-2xl p-5 flex flex-col justify-between hover:border-amber-600/50 transition-all">
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-amber-600/10 text-amber-600 flex items-center justify-center mb-3">
+                  <Frame size={20} />
+                </div>
+                <h3 className="font-bold df-text text-base">Cuadro Fotográfico Enmarcado</h3>
+                <p className="text-xs df-muted mt-1 leading-relaxed">
+                  Impresión fotográfica en alta definición con retoque profesional y marco elegante listo para colgar (Ideal para Promoción, 15 Años o Familia).
+                </p>
+                <p className="text-lg font-black text-amber-600 mt-3">Desde S/ 80</p>
+              </div>
+              <a
+                href={crearUrlWhatsApp(
+                  NUMERO_DELUCES,
+                  `¡Hola Deluces Films! 🖼️✨ Soy de *${clienteActual.nombreCliente}*.\nDeseo cotizar un *Cuadro Fotográfico Enmarcado* con mi foto favorita${favoritas.length > 0 ? ` (Mis favoritas marcadas: ${numerosFotosFavoritas})` : ''}.`
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 w-full bg-amber-600 hover:bg-amber-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+              >
+                <Send size={14} /> Pedir mi Cuadro
+              </a>
+            </div>
+
+            {/* OPCIÓN 2: ÁLBUM IMPRESO + USB */}
+            <div className="df-bg border df-border rounded-2xl p-5 flex flex-col justify-between hover:border-amber-600/50 transition-all">
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-amber-600/10 text-amber-600 flex items-center justify-center mb-3">
+                  <BookOpen size={20} />
+                </div>
+                <h3 className="font-bold df-text text-base">Álbum Fotográfico + USB</h3>
+                <p className="text-xs df-muted mt-1 leading-relaxed">
+                  Álbum físico de lujo diagramado con tu selección de fotografías favoritas e incluye memoria USB con todo tu material en HD.
+                </p>
+                <p className="text-lg font-black text-amber-600 mt-3">Consultar Tamaños</p>
+              </div>
+              <a
+                href={crearUrlWhatsApp(
+                  NUMERO_DELUCES,
+                  `¡Hola Deluces Films! 📖✨ Soy de *${clienteActual.nombreCliente}*.\nMe interesa pedir un *Álbum Fotográfico Impreso + USB* de mi evento${favoritas.length > 0 ? ` (Seleccioné ${favoritas.length} fotos favoritas: ${numerosFotosFavoritas})` : ''}.`
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 w-full bg-amber-600 hover:bg-amber-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+              >
+                <Send size={14} /> Cotizar Álbum + USB
+              </a>
+            </div>
+
+            {/* OPCIÓN 3: PACK RECUERDO COMPLETO */}
+            <div className="df-bg border df-border rounded-2xl p-5 flex flex-col justify-between hover:border-amber-600/50 transition-all">
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-amber-600/10 text-amber-600 flex items-center justify-center mb-3">
+                  <Sparkles size={20} />
+                </div>
+                <h3 className="font-bold df-text text-base">Pack Cuadro + Álbum + Fotos</h3>
+                <p className="text-xs df-muted mt-1 leading-relaxed">
+                  Combina tu cuadro central de pared con tu álbum impreso o copias adicionales para regalar a los abuelos y padrinos.
+                </p>
+                <p className="text-lg font-black text-amber-600 mt-3">Precio Especial</p>
+              </div>
+              <a
+                href={crearUrlWhatsApp(
+                  NUMERO_DELUCES,
+                  `¡Hola Deluces Films! 🎁✨ Soy de *${clienteActual.nombreCliente}*.\nMe gustaría consultar el precio especial por el *Pack de Cuadro + Álbum Físico*${favoritas.length > 0 ? ` con mis fotos seleccionadas (${numerosFotosFavoritas})` : ''}.`
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 w-full df-card border df-border hover:border-amber-600 df-text py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <Send size={14} className="text-amber-600" /> Consultar Pack Completo
+              </a>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       {/* ==================================================== */}
-      {/* VISOR DE PANTALLA COMPLETA (LIGHTBOX DEL ÁLBUM)      */}
+      {/* VISOR DE PANTALLA COMPLETA (CON MÚSICA OPCIONAL)     */}
       {/* ==================================================== */}
       {fotoModalIndex !== null && fotosDelAlbum[fotoModalIndex] && (
         <div 
@@ -482,13 +735,15 @@ export default function AreaClientes() {
           className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-fade-in"
         >
           {/* Barra Superior del Visor */}
-          <div onClick={(e) => e.stopPropagation()} className="absolute top-4 left-4 right-4 flex justify-between items-center z-50">
+          <div onClick={(e) => e.stopPropagation()} className="absolute top-4 left-4 right-4 flex flex-wrap justify-between items-center gap-2 z-50">
             <span className="text-xs font-bold text-white/80 bg-white/10 px-3 py-1.5 rounded-full backdrop-blur-md">
               Foto #{fotoModalIndex + 1} de {fotosDelAlbum.length}
             </span>
 
             <div className="flex items-center gap-2">
+              {/* Botón Play / Pausa Presentación */}
               <button
+                type="button"
                 onClick={() => setModoPresentacion(!modoPresentacion)}
                 className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
                   modoPresentacion ? 'bg-amber-600 text-white' : 'bg-white/10 text-white hover:bg-white/20'
@@ -498,7 +753,25 @@ export default function AreaClientes() {
                 {modoPresentacion ? 'Pausar' : 'Presentación'}
               </button>
 
+              {/* Botón de Música de Fondo Opcional */}
               <button
+                type="button"
+                onClick={() => {
+                  if (!modoPresentacion) setModoPresentacion(true);
+                  setMusicaActiva(!musicaActiva);
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                  modoPresentacion && musicaActiva ? 'bg-emerald-600 text-white' : 'bg-white/10 text-white/80 hover:bg-white/20'
+                }`}
+                title="Activar o silenciar música de fondo"
+              >
+                {modoPresentacion && musicaActiva ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                <span className="hidden sm:inline">{modoPresentacion && musicaActiva ? 'Música ON' : 'Música OFF'}</span>
+              </button>
+
+              {/* Botón Favorita */}
+              <button
+                type="button"
                 onClick={(e) => toggleFavorita(fotoModalIndex, e)}
                 className={`p-2 rounded-full cursor-pointer transition-all ${
                   favoritas.includes(fotoModalIndex) ? 'bg-rose-600 text-white' : 'bg-white/10 text-white hover:bg-white/20'
@@ -508,17 +781,21 @@ export default function AreaClientes() {
                 <Heart size={18} fill={favoritas.includes(fotoModalIndex) ? "currentColor" : "none"} />
               </button>
 
+              {/* Descargar Foto Individual */}
               <a
                 href={obtenerLinkDescargaFoto(fotosDelAlbum[fotoModalIndex])}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={registrarDescargaYMostrarResena}
                 className="p-2 rounded-full bg-white/10 text-white hover:bg-amber-600 transition-colors"
                 title="Descargar esta foto"
               >
                 <Download size={18} />
               </a>
 
+              {/* Cerrar Visor */}
               <button
+                type="button"
                 onClick={() => { setFotoModalIndex(null); setModoPresentacion(false); }}
                 className="p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors cursor-pointer"
               >
@@ -546,6 +823,98 @@ export default function AreaClientes() {
               alt={`Foto ${fotoModalIndex + 1}`}
               className="max-h-[78vh] w-auto max-w-full object-contain rounded-xl shadow-2xl select-none"
             />
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL DE RESEÑA / TESTIMONIO AL DESCARGAR            */}
+      {/* ==================================================== */}
+      {modalResenaAbierto && (
+        <div 
+          onClick={() => setModalResenaAbierto(false)}
+          className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="df-card border df-border rounded-3xl p-6 md:p-8 w-full max-w-md shadow-2xl relative text-center"
+          >
+            <button 
+              type="button"
+              onClick={() => setModalResenaAbierto(false)}
+              className="absolute top-4 right-4 p-2 rounded-full df-bg df-muted hover:df-text cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+
+            {resenaEnviada ? (
+              <div className="py-6 space-y-3">
+                <div className="w-14 h-14 bg-emerald-500/10 text-emerald-500 rounded-2xl flex items-center justify-center mx-auto">
+                  <CheckCircle2 size={32} />
+                </div>
+                <h3 className="text-xl font-bold df-text">¡Muchas gracias por tu valoración!</h3>
+                <p className="text-xs df-muted">
+                  Tu testimonio nos ayuda a seguir creciendo y capturando mejores recuerdos en Deluces Films.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleEnviarResena} className="space-y-4">
+                <div className="w-12 h-12 bg-amber-600/10 text-amber-600 rounded-2xl flex items-center justify-center mx-auto">
+                  <Star size={24} fill="currentColor" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600">Tu Opinión Importa</span>
+                  <h3 className="text-xl font-bold df-text mt-1">¿Qué te pareció nuestro trabajo?</h3>
+                  <p className="text-xs df-muted mt-1">
+                    Mientras se descargan tus archivos, regálanos una breve reseña sobre tu experiencia con Deluces Films.
+                  </p>
+                </div>
+
+                {/* Selector de 5 Estrellas */}
+                <div className="flex justify-center gap-2 py-2">
+                  {[1, 2, 3, 4, 5].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => setEstrellas(num)}
+                      className="p-1 transition-transform hover:scale-125 cursor-pointer"
+                    >
+                      <Star 
+                        size={28} 
+                        fill={num <= estrellas ? "#d97706" : "none"} 
+                        className={num <= estrellas ? "text-amber-600" : "df-muted"} 
+                      />
+                    </button>
+                  ))}
+                </div>
+
+                <input
+                  type="text"
+                  value={autorResena}
+                  onChange={(e) => setAutorResena(e.target.value)}
+                  placeholder="Tu nombre (Ej. Familia Palacios / Promoción 6to A)"
+                  required
+                  className="w-full df-bg border df-border rounded-xl px-4 py-2.5 text-xs df-text outline-none focus:border-amber-600"
+                />
+
+                <textarea
+                  rows="3"
+                  value={comentarioResena}
+                  onChange={(e) => setComentarioResena(e.target.value)}
+                  placeholder="Escribe aquí qué fue lo que más te gustó de tus fotos y videos..."
+                  required
+                  className="w-full df-bg border df-border rounded-xl px-4 py-2.5 text-xs df-text outline-none focus:border-amber-600 resize-none"
+                />
+
+                <button
+                  type="submit"
+                  disabled={enviandoResena}
+                  className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
+                >
+                  {enviandoResena ? 'Enviando...' : 'Enviar Reseña'}
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}

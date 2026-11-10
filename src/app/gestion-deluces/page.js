@@ -6,11 +6,10 @@ import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   ShieldCheck, PlusCircle, ArrowLeft, Image as ImageIcon, 
-  Trash2, Edit2, X, RefreshCw, Video, LogOut, Copy, Send, Search, Plus, BookOpen
+  Trash2, Edit2, X, RefreshCw, Video, LogOut, Copy, Send, Search, Plus, BookOpen, Star
 } from 'lucide-react';
 import Link from 'next/link';
 
-// Convierte automáticamente un link compartido de Google Drive en un link de imagen directa
 const normalizarImagenUrl = (url) => {
   if (!url) return '';
   const limpia = url.trim();
@@ -21,6 +20,20 @@ const normalizarImagenUrl = (url) => {
   return limpia;
 };
 
+// Genera link universal de WhatsApp que no falla ni es bloqueado por el navegador
+const obtenerUrlWhatsAppEntrega = (cliente) => {
+  const texto = `¡Hola! 👋✨ Espero que se encuentren muy bien.\n\nMe emociona avisarles que ya están listos los archivos y el Álbum Digital de *${cliente.nombreCliente}* (${cliente.tipo}). 📸🎥🎉\n\nPara ver su álbum interactivo y descargar todo su material en alta calidad, pueden ingresar directamente a nuestra plataforma web:\n\n🌐 *Enlace directo:* https://deluces-films.vercel.app/clientes?code=${encodeURIComponent(cliente.password)}\n🔑 *Contraseña:* ${cliente.password}\n\nDe parte de *Deluces Films*, muchas gracias por confiar en nosotros para capturar estos recuerdos. ¡Que lo disfruten muchísimo! 🥂🎬`;
+  
+  const textoCodificado = encodeURIComponent(texto);
+  let fono = (cliente.telefonoCliente || '').replace(/\D/g, '');
+  if (fono.length === 9) fono = `51${fono}`; // Agrega código de Perú automáticamente si tiene 9 dígitos
+
+  if (fono) {
+    return `https://api.whatsapp.com/send?phone=${fono}&text=${textoCodificado}`;
+  }
+  return `https://api.whatsapp.com/send?text=${textoCodificado}`;
+};
+
 export default function AdminPage() {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
@@ -28,16 +41,17 @@ export default function AdminPage() {
   const [cargandoAuth, setCargandoAuth] = useState(false);
   const [refrescando, setRefrescando] = useState(false);
   
-  // ESTADOS CLIENTES (Soporta múltiples enlaces extra + Álbum Digital de fotos)
+  // ESTADOS CLIENTES
   const clienteInicial = { 
     nombreCliente: '', 
     password: '', 
+    telefonoCliente: '',
     tipo: '', 
     fecha: '', 
     previewImage: '', 
     driveLink: '',
     enlacesExtra: [],
-    albumFotosTexto: '' // Campo de texto rápido (1 link por línea) para el formulario
+    albumFotosTexto: ''
   };
   const [formCliente, setFormCliente] = useState(clienteInicial);
   const [cargandoCliente, setCargandoCliente] = useState(false);
@@ -52,6 +66,9 @@ export default function AdminPage() {
   const [listaGaleria, setListaGaleria] = useState([]);
   const [editandoFotoId, setEditandoFotoId] = useState(null);
   const [filtroCategoria, setFiltroCategoria] = useState('todas');
+
+  // ESTADOS TESTIMONIOS RECIBIDOS
+  const [listaTestimonios, setListaTestimonios] = useState([]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -71,6 +88,9 @@ export default function AdminPage() {
       let fotosCargadas = galeriaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       fotosCargadas.sort((a, b) => Number(a.orden) - Number(b.orden));
       setListaGaleria(fotosCargadas);
+
+      const testimoniosSnapshot = await getDocs(collection(db, "testimonios"));
+      setListaTestimonios(testimoniosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     } catch (error) {
       console.error("Error al cargar datos:", error);
     } finally {
@@ -104,7 +124,6 @@ export default function AdminPage() {
     await signOut(auth);
   };
 
-  // ENLACES EXTRA DEL CLIENTE
   const agregarEnlaceExtra = () => {
     setFormCliente(prev => ({
       ...prev,
@@ -123,7 +142,6 @@ export default function AdminPage() {
     setFormCliente(prev => ({ ...prev, enlacesExtra: copia }));
   };
 
-  // GUARDAR CLIENTE (Procesa las líneas del Álbum Digital)
   const handleSubmitCliente = async (e) => {
     e.preventDefault();
     setCargandoCliente(true);
@@ -136,6 +154,7 @@ export default function AdminPage() {
       const datosLimpios = {
         nombreCliente: formCliente.nombreCliente.trim(),
         password: formCliente.password.trim(),
+        telefonoCliente: (formCliente.telefonoCliente || '').trim(),
         tipo: formCliente.tipo.trim(),
         fecha: formCliente.fecha.trim(),
         previewImage: normalizarImagenUrl(formCliente.previewImage),
@@ -168,32 +187,31 @@ export default function AdminPage() {
     }
   };
 
+  const eliminarTestimonio = async (id) => {
+    if (window.confirm("¿Seguro de eliminar esta reseña?")) {
+      await deleteDoc(doc(db, "testimonios", id));
+      cargarDatos();
+    }
+  };
+
   const prepararEdicionCliente = (cliente) => {
     setEditandoClienteId(cliente.id);
     setFormCliente({
       ...clienteInicial,
       ...cliente,
+      telefonoCliente: cliente.telefonoCliente || '',
       enlacesExtra: Array.isArray(cliente.enlacesExtra) ? cliente.enlacesExtra : [],
       albumFotosTexto: Array.isArray(cliente.albumFotos) ? cliente.albumFotos.join('\n') : ''
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const armarMensajeEntrega = (cliente) => {
-    return `¡Hola! 👋✨ Espero que se encuentren muy bien.\n\nMe emociona avisarles que ya están listos los archivos y el Álbum Digital de *${cliente.nombreCliente}* (${cliente.tipo}). 📸🎥🎉\n\nPara ver su álbum interactivo y descargar todo su material en alta calidad, pueden ingresar directamente a nuestra plataforma web:\n\n🌐 *Enlace directo:* https://deluces-films.vercel.app/clientes?code=${encodeURIComponent(cliente.password)}\n🔑 *Contraseña:* ${cliente.password}\n\nDe parte de *Deluces Films*, muchas gracias por confiar en nosotros para capturar estos recuerdos. ¡Que lo disfruten muchísimo! 🥂🎬`;
-  };
-
   const copiarMensajeCliente = (cliente) => {
-    navigator.clipboard.writeText(armarMensajeEntrega(cliente));
-    alert(`¡Mensaje de entrega para "${cliente.nombreCliente}" copiado!`);
+    const texto = `¡Hola! 👋✨ Espero que se encuentren muy bien.\n\nMe emociona avisarles que ya están listos los archivos y el Álbum Digital de *${cliente.nombreCliente}* (${cliente.tipo}). 📸🎥🎉\n\nPara ver su álbum interactivo y descargar todo su material en alta calidad, pueden ingresar directamente a nuestra plataforma web:\n\n🌐 *Enlace directo:* https://deluces-films.vercel.app/clientes?code=${encodeURIComponent(cliente.password)}\n🔑 *Contraseña:* ${cliente.password}\n\nDe parte de *Deluces Films*, muchas gracias por confiar en nosotros para capturar estos recuerdos. ¡Que lo disfruten muchísimo! 🥂🎬`;
+    navigator.clipboard.writeText(texto);
+    alert(`¡Mensaje de entrega para "${cliente.nombreCliente}" copiado al portapapeles!`);
   };
 
-  const enviarWhatsAppCliente = (cliente) => {
-    const texto = armarMensajeEntrega(cliente);
-    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
-  };
-
-  // LÓGICA GALERÍA PORTAFOLIO
   const handleSubmitGaleria = async (e) => {
     e.preventDefault();
     setCargandoGaleria(true);
@@ -314,7 +332,10 @@ export default function AdminPage() {
               </div>
               <form onSubmit={handleSubmitCliente} className="space-y-4">
                 <input type="text" value={formCliente.nombreCliente} onChange={e => setFormCliente({...formCliente, nombreCliente: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Nombre del Cliente o Evento" />
-                <input type="text" value={formCliente.password} onChange={e => setFormCliente({...formCliente, password: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Contraseña (Ej. 6A2026)" />
+                <div className="grid grid-cols-2 gap-3">
+                  <input type="text" value={formCliente.password} onChange={e => setFormCliente({...formCliente, password: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Contraseña (Ej. 6A2026)" />
+                  <input type="tel" value={formCliente.telefonoCliente} onChange={e => setFormCliente({...formCliente, telefonoCliente: e.target.value})} className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="WhatsApp Cliente (Opcional)" />
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <input type="text" value={formCliente.tipo} onChange={e => setFormCliente({...formCliente, tipo: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Tipo de Evento" />
                   <input type="text" value={formCliente.fecha} onChange={e => setFormCliente({...formCliente, fecha: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Fecha (Ej. 15 Octubre)" />
@@ -322,7 +343,7 @@ export default function AdminPage() {
                 <input type="url" value={formCliente.previewImage} onChange={e => setFormCliente({...formCliente, previewImage: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="URL Foto de Portada (acepta link de Drive)" />
                 <input type="url" value={formCliente.driveLink} onChange={e => setFormCliente({...formCliente, driveLink: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Link Principal de Google Drive (Carpeta completa)" />
 
-                {/* NUEVA SECCIÓN: ÁLBUM DIGITAL INTERACTIVO */}
+                {/* SECCIÓN: ÁLBUM DIGITAL INTERACTIVO */}
                 <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-2">
                   <label className="text-[11px] font-bold uppercase text-amber-600 flex items-center gap-1.5">
                     <BookOpen size={14}/> Álbum Digital Interactivo (Opcional)
@@ -335,11 +356,11 @@ export default function AdminPage() {
                     className="w-full df-bg border df-border rounded-xl px-3 py-2.5 text-xs focus:border-amber-600 df-text outline-none resize-y"
                   />
                   <p className="text-[10px] df-muted leading-tight">
-                    El cliente verá estas fotos en un álbum elegante dentro de la web, podrá abrirlas en pantalla completa, elegir sus favoritas (❤️) y enviarte su selección por WhatsApp.
+                    El cliente verá estas fotos en su álbum digital con presentación musical, podrá marcar sus favoritas (❤️) y pedirte su cuadro o álbum físico.
                   </p>
                 </div>
 
-                {/* ENLACES EXTRA (Ej: Video Parte 1, Parte 2, Reel) */}
+                {/* ENLACES EXTRA */}
                 <div className="pt-1 space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[11px] font-bold uppercase tracking-wider df-muted">Videos o Carpetas Adicionales</span>
@@ -489,10 +510,25 @@ export default function AdminPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <button onClick={() => copiarMensajeCliente(cliente)} className="p-1.5 bg-amber-500/10 text-amber-600 rounded-md hover:bg-amber-600 hover:text-white transition-colors cursor-pointer" title="Copiar mensaje de entrega"><Copy size={14}/></button>
-                      <button onClick={() => enviarWhatsAppCliente(cliente)} className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-md hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer" title="Enviar acceso por WhatsApp"><Send size={14}/></button>
-                      <button onClick={() => prepararEdicionCliente(cliente)} className="p-1.5 bg-blue-500/10 text-blue-500 rounded-md hover:bg-blue-500 hover:text-white transition-colors cursor-pointer" title="Editar"><Edit2 size={14}/></button>
-                      <button onClick={() => eliminarCliente(cliente.id)} className="p-1.5 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-colors cursor-pointer" title="Eliminar"><Trash2 size={14}/></button>
+                      <button 
+                        type="button"
+                        onClick={() => copiarMensajeCliente(cliente)} 
+                        className="p-1.5 bg-amber-500/10 text-amber-600 rounded-md hover:bg-amber-600 hover:text-white transition-colors cursor-pointer" 
+                        title="Copiar mensaje de entrega"
+                      >
+                        <Copy size={14}/>
+                      </button>
+                      <a 
+                        href={obtenerUrlWhatsAppEntrega(cliente)} 
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-md hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer inline-flex items-center justify-center" 
+                        title="Enviar acceso por WhatsApp"
+                      >
+                        <Send size={14}/>
+                      </a>
+                      <button type="button" onClick={() => prepararEdicionCliente(cliente)} className="p-1.5 bg-blue-500/10 text-blue-500 rounded-md hover:bg-blue-500 hover:text-white transition-colors cursor-pointer" title="Editar"><Edit2 size={14}/></button>
+                      <button type="button" onClick={() => eliminarCliente(cliente.id)} className="p-1.5 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-colors cursor-pointer" title="Eliminar"><Trash2 size={14}/></button>
                     </div>
                   </div>
                 ))}
@@ -520,7 +556,7 @@ export default function AdminPage() {
                 </select>
               </div>
 
-              <div className="max-h-[500px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+              <div className="max-h-[380px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                 {galeriaFiltrada.length === 0 && <p className="text-xs df-muted">No hay contenido en esta categoría.</p>}
                 {galeriaFiltrada.map(foto => (
                   <div key={foto.id} className="flex justify-between items-center p-3 df-bg rounded-xl border df-border group hover:border-amber-500/50 transition-colors">
@@ -535,13 +571,39 @@ export default function AdminPage() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => prepararEdicionFoto(foto)} className="p-1.5 bg-blue-500/10 text-blue-500 rounded-md hover:bg-blue-500 hover:text-white transition-colors cursor-pointer" title="Editar"><Edit2 size={14}/></button>
-                      <button onClick={() => eliminarFoto(foto.id)} className="p-1.5 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-colors cursor-pointer" title="Eliminar"><Trash2 size={14}/></button>
+                      <button type="button" onClick={() => prepararEdicionFoto(foto)} className="p-1.5 bg-blue-500/10 text-blue-500 rounded-md hover:bg-blue-500 hover:text-white transition-colors cursor-pointer" title="Editar"><Edit2 size={14}/></button>
+                      <button type="button" onClick={() => eliminarFoto(foto.id)} className="p-1.5 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-colors cursor-pointer" title="Eliminar"><Trash2 size={14}/></button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
+
+            {/* LISTA DE RESEÑAS / TESTIMONIOS DE CLIENTES */}
+            <div className="df-card border df-border p-6 rounded-3xl shadow-md">
+              <h3 className="font-bold df-text mb-4 flex items-center gap-2">
+                <Star size={16} className="text-amber-500" fill="currentColor" /> Reseñas de Clientes ({listaTestimonios.length})
+              </h3>
+              <div className="max-h-[280px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+                {listaTestimonios.length === 0 && <p className="text-xs df-muted">Aún no hay reseñas registradas.</p>}
+                {listaTestimonios.map(item => (
+                  <div key={item.id} className="p-3 df-bg rounded-xl border df-border flex justify-between items-start gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-bold df-text">{item.nombreCliente}</p>
+                        <span className="text-[10px] text-amber-500">{'★'.repeat(item.estrellas || 5)}</span>
+                      </div>
+                      <p className="text-xs df-muted mt-1 italic">"{item.comentario}"</p>
+                      <p className="text-[10px] df-muted mt-1">{item.evento} • {item.fecha}</p>
+                    </div>
+                    <button type="button" onClick={() => eliminarTestimonio(item.id)} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
