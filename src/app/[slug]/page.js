@@ -4,7 +4,7 @@ const infoCategorias = {
   'institucional': {
     titulo: 'Eventos Institucionales',
     subtitulo: 'COBERTURA CORPORATIVA Y OFICIAL',
-    desc: 'Registro audiovisual de alta calidad para conferencias, aniversarios, ceremonias y eventos corporativos con acabados formales.',
+    desc: 'Registro audiovisual de alta calidad para conferencias, promociones escolares, aniversarios, ceremonias y eventos corporativos.',
     accent: 'bg-blue-600/10'
   },
   'parejas': {
@@ -16,13 +16,13 @@ const infoCategorias = {
   'publicidad': {
     titulo: 'Publicidad para Negocios',
     subtitulo: 'SPOTS COMERCIALES Y DE MARCA',
-    desc: 'Creamos contenido visual estratégico para redes sociales y medios digitales que conecta con tus clientes y eleva tus ventas.',
+    desc: 'Creamos contenido visual estratégico y Reels dinámicos para redes sociales que conectan con tus clientes y elevan tus ventas.',
     accent: 'bg-indigo-600/10'
   },
   'revelacion-genero': {
     titulo: 'Revelación de Género',
     subtitulo: 'MOMENTOS FAMILIARES ÚNICOS',
-    desc: 'Inmortalizamos la emoción y la alegría de ese gran anuncio familiar con un registro lleno de vida y color.',
+    desc: 'Inmortalizamos la emoción de 15 años, cumpleaños y grandes anuncios familiares con un registro lleno de vida y color.',
     accent: 'bg-pink-600/10'
   },
   'fiestas-patronales': {
@@ -45,20 +45,19 @@ const infoCategorias = {
   },
   'personal': {
     titulo: 'Fotos y Videos Personales',
-    subtitulo: 'RETRATOS Y COBERTURA ÍNTIMA',
-    desc: 'Sesiones individuales, books personales y cobertura de momentos especiales con un enfoque artístico y profesional.',
+    subtitulo: 'RETRATOS, PROMOCIÓN Y DEPORTES',
+    desc: 'Sesiones individuales, cuadros de promoción, fotografía deportiva y cobertura de momentos especiales con enfoque profesional.',
     accent: 'bg-pink-600/10'
   }
 };
 
-// Generación dinámica de metadatos para Google y Redes Sociales
 export async function generateMetadata({ params }) {
   const resolvedParams = await params;
   const slug = resolvedParams?.slug;
   const categoria = infoCategorias[slug] || {
     titulo: 'Servicio Audiovisual',
     subtitulo: 'DELUCES FILMS',
-    desc: 'Producción profesional adaptada a tus requerimientos.'
+    desc: 'Producción profesional de fotografía y filmación adaptada a tus requerimientos.'
   };
 
   return {
@@ -67,7 +66,7 @@ export async function generateMetadata({ params }) {
     openGraph: {
       title: `${categoria.titulo} | Deluces Films`,
       description: categoria.desc,
-      url: `https://delucesfilms.com/${slug}`,
+      url: `https://deluces-films.vercel.app/${slug}`,
       siteName: 'Deluces Films',
       locale: 'es_PE',
       type: 'website',

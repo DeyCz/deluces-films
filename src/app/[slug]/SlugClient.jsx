@@ -10,7 +10,7 @@ const infoCategorias = {
   'institucional': {
     titulo: 'Eventos Institucionales',
     subtitulo: 'COBERTURA CORPORATIVA Y OFICIAL',
-    desc: 'Registro audiovisual de alta calidad para conferencias, aniversarios, ceremonias y eventos corporativos con acabados formales.',
+    desc: 'Registro audiovisual de alta calidad para conferencias, promociones escolares, aniversarios, ceremonias y eventos corporativos.',
     icono: Video,
     accent: 'bg-blue-600/10',
     colorText: 'text-blue-600',
@@ -73,7 +73,7 @@ const infoCategorias = {
   'personal': {
     titulo: 'Fotos y Videos Personales',
     subtitulo: 'RETRATOS Y COBERTURA ÍNTIMA',
-    desc: 'Sesiones individuales, books personales y cobertura de momentos especiales con un enfoque artístico y profesional.',
+    desc: 'Sesiones individuales, cuadros de promoción, fotografía deportiva y cobertura de momentos especiales con enfoque artístico.',
     icono: Camera,
     accent: 'bg-emerald-600/10',
     colorText: 'text-emerald-600',
@@ -81,9 +81,19 @@ const infoCategorias = {
   }
 };
 
+// Convierte links compartidos de Drive en miniatura directa si fuera necesario
+const formatearImagenUrl = (url) => {
+  if (!url) return '/institucional.jpg';
+  if (url.includes('drive.google.com/file/d/')) {
+    const id = url.split('/d/')[1]?.split('/')[0];
+    if (id) return `https://drive.google.com/thumbnail?id=${id}&sz=w1600`;
+  }
+  return url;
+};
+
 export default function SlugClient({ slug }) {
   const [mounted, setMounted] = useState(false);
-  const data = infoCategorias[slug];
+  const data = infoCategorias[slug] || infoCategorias['institucional'];
 
   const [galeriaFotos, setGaleriaFotos] = useState([]);
   const [cargandoFotos, setCargandoFotos] = useState(true);
@@ -92,10 +102,11 @@ export default function SlugClient({ slug }) {
   const [tipoEvento, setTipoEvento] = useState(data ? data.formulario : '');
   const [mensaje, setMensaje] = useState('');
 
-  // Estados del Modal y Navegación
+  // Estados del Modal, Navegación y Swipe Táctil
   const [modalAbierto, setModalAbierto] = useState(false);
   const [trabajoSeleccionado, setTrabajoSeleccionado] = useState(null);
   const [indiceActual, setIndiceActual] = useState(0);
+  const [touchStartX, setTouchStartX] = useState(null);
   
   const [showTopBtn, setShowTopBtn] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -190,36 +201,48 @@ export default function SlugClient({ slug }) {
     setTrabajoSeleccionado(galeriaFotos[nuevoIndice]);
   };
 
+  // Soporte para deslizar con el dedo en celulares (Swipe)
+  const handleTouchStart = (e) => setTouchStartX(e.touches[0].clientX);
+  const handleTouchEnd = (e) => {
+    if (touchStartX === null || galeriaFotos.length <= 1) return;
+    const diff = touchStartX - e.changedTouches[0].clientX;
+    if (diff > 50) irSiguiente();
+    if (diff < -50) irAnterior();
+    setTouchStartX(null);
+  };
+
   const handleWhatsAppSubmit = (e) => {
     e.preventDefault();
-    const texto = `Hola Deluces Films, mi nombre es ${nombre}.\nEstoy interesado en cotizar un servicio de: *${tipoEvento}*.\n\nDetalles: ${mensaje}`;
+    const texto = `Hola Deluces Films ✨, mi nombre es *${nombre}*.\nEstoy interesado en cotizar un servicio de: *${tipoEvento}*.\n\nDetalles: ${mensaje}`;
     window.open(`https://wa.me/51967576214?text=${encodeURIComponent(texto)}`, '_blank');
   };
 
-  // FUNCIÓN MEJORADA PARA LIMPIAR LOS CONTROLES DE YOUTUBE
+  // FUNCIÓN DE EMBED COMPATIBLE CON YOUTUBE, SHORTS Y GOOGLE DRIVE
   const obtenerLinkEmbed = (url) => {
     if (!url) return '';
 
-    // CASO 1: Es de YouTube
     if (url.includes('youtube.com/watch?v=')) {
-      return url.replace('watch?v=', 'embed/');
+      const id = url.split('watch?v=')[1]?.split('&')[0];
+      return `https://www.youtube.com/embed/${id}?rel=0&modestbranding=1&playsinline=1`;
     }
     if (url.includes('youtu.be/')) {
-      return url.replace('youtu.be/', 'youtube.com/embed/');
+      const id = url.split('youtu.be/')[1]?.split('?')[0];
+      return `https://www.youtube.com/embed/${id}?rel=0&modestbranding=1&playsinline=1`;
     }
-
-    // CASO 2: Es de Google Drive (Aquí estaba el error)
+    if (url.includes('youtube.com/shorts/')) {
+      const id = url.split('shorts/')[1]?.split('?')[0];
+      return `https://www.youtube.com/embed/${id}?rel=0&modestbranding=1&playsinline=1`;
+    }
     if (url.includes('drive.google.com/file/d/')) {
-      // Extraemos el ID del archivo y lo convertimos a formato preview
-      const fileId = url.split('/d/')[1].split('/')[0];
+      const fileId = url.split('/d/')[1]?.split('/')[0];
       return `https://drive.google.com/file/d/${fileId}/preview`;
     }
 
-    // Si no es ninguno, devolvemos la URL original
     return url;
   };
 
   const IconComponent = data.icono;
+  const esVideoHorizontal = trabajoSeleccionado?.formatoVideo === 'horizontal';
 
   return (
     <div className="min-h-screen df-bg df-text font-sans relative">
@@ -267,7 +290,12 @@ export default function SlugClient({ slug }) {
                 onClick={() => abrirModal(index)}
                 className="group relative h-[280px] df-card rounded-2xl overflow-hidden border df-border shadow-xs cursor-pointer flex items-center justify-center transition-all duration-500 hover:shadow-2xl hover:-translate-y-2 bg-black"
               >
-                <img src={foto.imagenUrl} alt={foto.titulo} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 z-0 opacity-80 group-hover:opacity-100" loading="lazy"/>
+                <img 
+                  src={formatearImagenUrl(foto.imagenUrl)} 
+                  alt={foto.titulo} 
+                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 z-0 opacity-80 group-hover:opacity-100" 
+                  loading="lazy"
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-70 group-hover:opacity-90 transition-opacity duration-300 z-10" />
                 
                 {foto.videoUrl && (
@@ -294,62 +322,64 @@ export default function SlugClient({ slug }) {
         )}
       </section>
 
-      {/* MODAL PROFESIONAL OPTIMIZADO (Sin franjas negras y controles minimalistas) */}
+      {/* MODAL MULTIMEDIA OPTIMIZADO (Soporta Vertical 9:16 y Horizontal 16:9 sin recortar controles) */}
       {modalAbierto && (
-        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 md:p-6 animate-fade-in overflow-y-auto">
-          
-          {/* Botón Cerrar (Más pequeño y estético) */}
-          <button onClick={cerrarModal} className="absolute top-4 right-4 z-50 text-white/60 hover:text-white p-2 bg-black/40 rounded-full transition-colors cursor-pointer">
-            <X size={20} strokeWidth={1.5} />
+        <div 
+          onClick={cerrarModal}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 md:p-6 animate-fade-in overflow-y-auto"
+        >
+          <button onClick={cerrarModal} className="absolute top-4 right-4 z-50 text-white/70 hover:text-white p-2.5 bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer">
+            <X size={20} strokeWidth={2} />
           </button>
 
-          {/* Botones de Navegación Lateral (Más pequeños y estilizados) */}
           {galeriaFotos.length > 1 && (
             <>
               <button 
                 onClick={irAnterior}
-                className="absolute left-2 md:left-6 top-1/2 -translate-y-1/2 z-50 text-white/60 hover:text-white p-2 bg-black/40 hover:bg-black/80 rounded-full backdrop-blur-sm transition-all cursor-pointer"
+                className="absolute left-2 md:left-6 top-1/2 -translate-y-1/2 z-50 text-white/70 hover:text-white p-2.5 bg-black/50 hover:bg-black/80 rounded-full backdrop-blur-sm transition-all cursor-pointer"
               >
-                <ChevronLeft size={24} strokeWidth={1.5} />
+                <ChevronLeft size={24} strokeWidth={2} />
               </button>
               <button 
                 onClick={irSiguiente}
-                className="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 z-50 text-white/60 hover:text-white p-2 bg-black/40 hover:bg-black/80 rounded-full backdrop-blur-sm transition-all cursor-pointer"
+                className="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 z-50 text-white/70 hover:text-white p-2.5 bg-black/50 hover:bg-black/80 rounded-full backdrop-blur-sm transition-all cursor-pointer"
               >
-                <ChevronRight size={24} strokeWidth={1.5} />
+                <ChevronRight size={24} strokeWidth={2} />
               </button>
             </>
           )}
 
-          {/* Contenedor Principal */}
-          <div className="relative w-full max-w-sm md:max-w-4xl mx-auto flex flex-col items-center my-auto">
+          <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-sm md:max-w-4xl mx-auto flex flex-col items-center my-auto">
             
-            {/* Área Multimedia */}
             <div className="w-full flex justify-center items-center">
               {trabajoSeleccionado?.videoUrl ? (
-                /* Contenedor vertical 9:16 con truco para eliminar franjas laterales */
-                <div className="w-full max-w-[260px] md:max-w-[380px] aspect-[9/16] rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black relative flex items-center justify-center">
-                  <div className="w-full max-w-[280px] md:max-w-[400px] aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 bg-black relative">
-                    <iframe 
-                      src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
-                      className="absolute top-[-10%] left-[-10%] w-[120%] h-[120%] border-0"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    ></iframe>
-                  </div>
+                <div 
+                  className={
+                    esVideoHorizontal 
+                      ? "w-full max-w-3xl aspect-video rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black relative"
+                      : "w-full max-w-[290px] md:max-w-[360px] aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black relative"
+                  }
+                >
+                  <iframe 
+                    src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
+                    className="w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  ></iframe>
                 </div>
               ) : (
                 <div className="relative">
                   <img 
-                    src={trabajoSeleccionado?.imagenUrl} 
+                    src={formatearImagenUrl(trabajoSeleccionado?.imagenUrl)} 
                     alt={trabajoSeleccionado?.titulo} 
-                    className="max-h-[60vh] md:max-h-[68vh] w-auto max-w-full object-contain rounded-lg shadow-2xl ring-1 ring-white/10 select-none"
+                    className="max-h-[65vh] md:max-h-[72vh] w-auto max-w-full object-contain rounded-lg shadow-2xl ring-1 ring-white/10 select-none"
                   />
                 </div>
               )}
             </div>
 
-            {/* Información y Botón de Cotización */}
             <div className="mt-4 md:mt-6 w-full flex flex-col md:flex-row items-center justify-between gap-4 px-2 bg-black/40 md:bg-transparent p-3 md:p-0 rounded-xl backdrop-blur-sm md:backdrop-blur-none">
               <div className="text-center md:text-left">
                 <h3 className="text-base md:text-xl font-bold text-white tracking-wide">
@@ -357,7 +387,7 @@ export default function SlugClient({ slug }) {
                 </h3>
                 <div className="flex items-center justify-center md:justify-start gap-2 mt-1">
                   <p className="text-[10px] text-white/50 uppercase tracking-[0.15em] font-medium">
-                    {trabajoSeleccionado?.videoUrl ? 'Reel / Video Vertical' : 'Fotografía'}
+                    {trabajoSeleccionado?.videoUrl ? (esVideoHorizontal ? 'Video Horizontal HD' : 'Reel / Video Vertical') : 'Fotografía'}
                   </p>
                   <span className="text-xs text-white/30">•</span>
                   <p className="text-[10px] text-white/50 font-medium">
@@ -369,7 +399,7 @@ export default function SlugClient({ slug }) {
               <a 
                 href="#contacto-servicio" 
                 onClick={cerrarModal} 
-                className={`px-5 py-2 rounded-xl text-white text-xs md:text-sm font-bold transition-all shadow-lg hover:shadow-xl flex items-center gap-2 cursor-pointer ${data.colorText.replace('text-', 'bg-')}`}
+                className={`px-5 py-2.5 rounded-xl text-white text-xs md:text-sm font-bold transition-all shadow-lg hover:shadow-xl flex items-center gap-2 cursor-pointer ${data.colorText.replace('text-', 'bg-')}`}
               >
                 Cotizar este servicio
               </a>
@@ -393,7 +423,7 @@ export default function SlugClient({ slug }) {
               </div>
               <div className="flex items-center gap-4 transition-transform duration-300 hover:translate-x-1">
                 <div className="w-12 h-12 df-bg rounded-xl flex items-center justify-center df-text shadow-xs"><MapPin size={20}/></div>
-                <div><p className="text-xs df-muted">Ubicación de Cobertura</p><p className="font-semibold df-text">Cerro de Pasco y todo el Perú</p></div>
+                <div><p className="text-xs df-muted">Ubicación de Cobertura</p><p className="font-semibold df-text">Cerro de Pasco · Lima · Todo el Perú</p></div>
               </div>
             </div>
           </div>
@@ -406,8 +436,11 @@ export default function SlugClient({ slug }) {
                 <select value={tipoEvento} onChange={(e) => setTipoEvento(e.target.value)} required className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors df-text text-sm cursor-pointer">
                   <option value="">Selecciona el tipo de evento</option>
                   <option value="Eventos Institucionales">Eventos Institucionales</option>
+                  <option value="Promociones y Eventos Escolares">Promociones y Eventos Escolares</option>
+                  <option value="Eventos Sociales / 15 Años / Cumpleaños">Eventos Sociales / 15 Años / Cumpleaños</option>
                   <option value="Sesión de Fotos de Pareja">Sesión de Fotos de Pareja</option>
                   <option value="Publicidad para Negocios">Publicidad para Negocios</option>
+                  <option value="Fotografía Deportiva">Fotografía Deportiva</option>
                   <option value="Revelación de Género / Sociales">Revelación de Género / Sociales</option>
                   <option value="Fiestas Patronales">Fiestas Patronales</option>
                   <option value="Videoclips y Grupos de Baile">Videoclips y Grupos de Baile</option>
@@ -423,7 +456,7 @@ export default function SlugClient({ slug }) {
                 <label className="text-xs font-bold df-muted mb-1.5 block">Detalles del proyecto</label>
                 <textarea rows="4" value={mensaje} onChange={(e) => setMensaje(e.target.value)} required className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors resize-none df-text text-sm" placeholder="Cuéntanos la fecha, lugar o cualquier idea..."></textarea>
               </div>
-              <button type="submit" className="w-full btn-shimmer text-white font-bold py-4 rounded-xl transition-all shadow-md hover:shadow-xl flex items-center justify-center gap-2 text-sm"><Send size={18} /> Solicitar Cotización</button>
+              <button type="submit" className="w-full btn-shimmer text-white font-bold py-4 rounded-xl transition-all shadow-md hover:shadow-xl flex items-center justify-center gap-2 text-sm cursor-pointer"><Send size={18} /> Solicitar Cotización</button>
             </form>
           </div>
         </div>

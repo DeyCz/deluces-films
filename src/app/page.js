@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 
 // ==========================================
@@ -16,6 +15,7 @@ import { motion } from 'framer-motion';
 // ==========================================
 function CategoryCard({ trabajo }) {
   const cardRef = useRef(null);
+  const [imgSrc, setImgSrc] = useState(trabajo.image);
 
   const handleMouseMove = (e) => {
     const card = cardRef.current;
@@ -52,23 +52,24 @@ function CategoryCard({ trabajo }) {
       onMouseLeave={handleMouseLeave}
       className="card-3d-spotlight group relative w-full h-[320px] df-card rounded-3xl overflow-hidden border df-border shadow-sm cursor-pointer flex flex-col justify-end p-6 transition-all duration-300 block"
     >
-      {/* 1. Imagen de fondo principal OPTIMIZADA */}
+      {/* 1. Imagen de fondo principal OPTIMIZADA con Fallback seguro */}
       <Image 
-        src={trabajo.image} 
+        src={imgSrc} 
         alt={trabajo.titulo} 
         fill
         sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
         className="object-cover transition-transform duration-700 group-hover:scale-110 z-0"
-        priority={trabajo.id <= 3} // Carga rápido las 3 primeras, el resto espera al scroll
+        priority={trabajo.id <= 3}
+        onError={() => setImgSrc('/institucional.jpg')}
       />
 
-      {/* 2. Gradiente inferior para legibilidad del texto (Siempre visible para asegurar contraste) */}
+      {/* 2. Gradiente inferior para legibilidad del texto */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none" />
 
       {/* 3. Capa de color acentuado */}
       <div className={`absolute inset-0 ${trabajo.accent || 'bg-amber-600'} opacity-20 group-hover:opacity-10 transition-all duration-700 ease-out z-10 pointer-events-none`} />
 
-      {/* 4. Efecto Spotlight del cursor (Solo visible en PC) */}
+      {/* 4. Efecto Spotlight del cursor */}
       <div 
         className="absolute inset-0 pointer-events-none opacity-0 md:group-hover:opacity-100 transition-opacity duration-300 z-10"
         style={{
@@ -76,7 +77,7 @@ function CategoryCard({ trabajo }) {
         }}
       />
 
-      {/* 5. Botón flotante: En celulares se muestra siempre con opacidad parcial, y en PC hace efecto hover */}
+      {/* 5. Botón flotante */}
       <div className="absolute top-4 right-4 w-10 h-10 bg-white/20 md:bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm transform md:translate-y-2 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 transition-all duration-300 z-20">
         <ArrowRight size={18} />
       </div>
@@ -97,17 +98,16 @@ function CategoryCard({ trabajo }) {
   );
 }
 
-
 // ==========================================
-// ARREGLO ÚNICO DE DATOS (CON ENLACES CORREGIDOS)
+// ARREGLO ÚNICO DE DATOS
 // ==========================================
 const categoriasTrabajos = [
   {
     id: 1,
     titulo: "Eventos Institucionales",
     categoria: "INSTITUCIONAL",
-    desc: "Cobertura corporativa y actos oficiales.",
-    href: "/institucional", // <--- Redirige a la página correspondiente
+    desc: "Cobertura corporativa, promociones escolares y actos oficiales.",
+    href: "/institucional",
     accent: "bg-blue-600",
     image: "/institucional.jpg"
   },
@@ -124,7 +124,7 @@ const categoriasTrabajos = [
     id: 3,
     titulo: "Publicidad para Negocios",
     categoria: "PUBLICIDAD",
-    desc: "Spots comerciales que potencian tu marca.",
+    desc: "Reels comerciales y spots que potencian tu marca.",
     href: "/publicidad",
     accent: "bg-indigo-600",
     image: "/publicidad.jpg"
@@ -133,7 +133,7 @@ const categoriasTrabajos = [
     id: 4,
     titulo: "Revelación de Género",
     categoria: "SOCIALES",
-    desc: "Emoción y momentos inolvidables en familia.",
+    desc: "Emoción, 15 años, cumpleaños y momentos en familia.",
     href: "/revelacion-genero",
     accent: "bg-purple-600",
     image: "/revelacion.jpg"
@@ -169,13 +169,12 @@ const categoriasTrabajos = [
     id: 8,
     titulo: "Fotos y Videos Personales",
     categoria: "PERSONAL",
-    desc: "Retratos individuales y cobertura íntima.",
+    desc: "Retratos individuales, cuadros de promoción y fotografía deportiva.",
     href: "/personal",
     accent: "bg-emerald-600",
     image: "/personal.jpg"
   }
 ];
-
 
 const serviciosGenerales = [
   {
@@ -185,12 +184,12 @@ const serviciosGenerales = [
   },
   {
     titulo: "Filmación Cinematográfica",
-    desc: "Creamos videos de alta calidad que se ven y se sienten como una película, perfectos para contar tu historia.",
+    desc: "Creamos videos de alta calidad que se ven y se sienten como una película, además de transmisiones en vivo multicámara.",
     icono: Clapperboard
   },
   {
     titulo: "Post-Producción & Edición",
-    desc: "Pulimos cada detalle de tus fotos y videos. Ajustamos colores, sonido y ritmo para que el resultado final sea impactante.",
+    desc: "Pulimos cada detalle de tus fotos y videos. Ajustamos colores, sonido y ritmo con entrega digital en nuestra plataforma privada.",
     icono: Film
   }
 ];
@@ -198,19 +197,19 @@ const serviciosGenerales = [
 const preguntasFrecuentes = [
   {
     pregunta: '¿Con cuánta anticipación debo separar la fecha para mi evento?',
-    respuesta: 'Recomendamos reservar con un mínimo de 2 a 3 meses de anticipación, especialmente para bodas, quince años y fechas de alta demanda.'
+    respuesta: 'Recomendamos reservar con un mínimo de 2 a 4 semanas para sesiones o eventos locales, y de 2 a 3 meses para bodas, quince años, promociones escolares y fiestas patronales.'
   },
   {
-    pregunta: '¿Realizan coberturas en todo el Perú?',
-    respuesta: 'Sí, cubrimos eventos, fiestas patronales y proyectos audiovisuales en todo el Perú. Los detalles de transporte se coordinan de forma personalizada.'
+    pregunta: '¿Realizan coberturas en Cerro de Pasco y todo el Perú?',
+    respuesta: 'Sí, nuestra base está en Pasco y realizamos coberturas en Cerro de Pasco, Colquijirca, Lima y cualquier ciudad del Perú, coordinando la logística de forma personalizada.'
   },
   {
-    pregunta: '¿Cuál es el tiempo de entrega del material final?',
-    respuesta: 'Las fotografías editadas se entregan digitalmente en un plazo de 7 a 10 días hábiles. Los videos cinematográficos toman entre 15 y 25 días hábiles.'
+    pregunta: '¿Cuál es el tiempo y formato de entrega del material final?',
+    respuesta: 'Todo el material se entrega en alta definición mediante nuestra plataforma web con una contraseña privada exclusiva para ti. Las fotografías se entregan entre 7 y 10 días hábiles, y los videos editados entre 15 y 25 días hábiles.'
   },
   {
     pregunta: '¿Cómo se realiza el pago de los servicios?',
-    respuesta: 'La fecha se aparta con el 50% de adelanto mediante transferencia o billeteras digitales, y el 50% restante se cancela el mismo día de la cobertura.'
+    respuesta: 'La fecha se aparta con el 50% de adelanto mediante transferencia bancaria o billeteras digitales (Yape/Plin), y el 50% restante se cancela el mismo día de la cobertura.'
   }
 ];
 
@@ -260,9 +259,9 @@ export default function Home() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Funciones de navegación fluida (Scroll Lento)
+  // Funciones de navegación fluida
   const scrollToSection = (e, targetId) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setMenuAbierto(false);
 
     const targetElement = document.querySelector(targetId);
@@ -271,8 +270,15 @@ export default function Home() {
     const targetPosition = targetElement.getBoundingClientRect().top + window.pageYOffset;
     const startPosition = window.pageYOffset;
     const distance = targetPosition - startPosition; 
-    const duration = 1000; 
+    const duration = 900; 
     let startTime = null;
+
+    const ease = (t, b, c, d) => {
+      t /= d / 2;
+      if (t < 1) return c / 2 * t * t * t + b;
+      t -= 2;
+      return c / 2 * (t * t * t + 2) + b;
+    };
 
     const animation = (currentTime) => {
       if (startTime === null) startTime = currentTime;
@@ -282,43 +288,22 @@ export default function Home() {
       if (timeElapsed < duration) requestAnimationFrame(animation);
     };
 
-    const ease = (t, b, c, d) => {
-      t /= d / 2;
-      if (t < 1) return c / 2 * t * t * t + b;
-      t -= 2;
-      return c / 2 * (t * t * t + 2) + b;
-    };
-
     requestAnimationFrame(animation);
+  };
+
+  // Seleccionar un plan de precios y llevar al formulario
+  const seleccionarPlan = (nombrePlan, precioPlan) => {
+    if (!tipoEvento) setTipoEvento('Eventos Sociales / 15 Años / Cumpleaños');
+    setMensaje(`Me interesa cotizar el Plan ${nombrePlan} (desde ${precioPlan}). La fecha y lugar aproximados de mi evento son: `);
+    scrollToSection(null, '#contacto');
   };
 
   const goToTop = (e) => {
     if (e) e.preventDefault();
     setMenuAbierto(false);
-
-    const startPosition = window.pageYOffset;
-    const duration = 1000;
-    let startTime = null;
-
-    const animation = (currentTime) => {
-      if (startTime === null) startTime = currentTime;
-      const timeElapsed = currentTime - startTime;
-      const run = ease(timeElapsed, startPosition, -startPosition, duration);
-      window.scrollTo(0, run);
-      if (timeElapsed < duration) requestAnimationFrame(animation);
-    };
-
-    const ease = (t, b, c, d) => {
-      t /= d / 2;
-      if (t < 1) return c / 2 * t * t * t + b;
-      t -= 2;
-      return c / 2 * (t * t * t + 2) + b;
-    };
-
-    requestAnimationFrame(animation);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Interacciones de UI
   const toggleFaq = (index) => setFaqAbierto(faqAbierto === index ? null : index);
   const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
 
@@ -326,7 +311,7 @@ export default function Home() {
   const handleWhatsAppSubmit = (e) => {
     e.preventDefault();
     const numeroWhatsApp = '51967576214';
-    const texto = `Hola, mi nombre es ${nombre}. Me interesa cotizar un servicio de "${tipoEvento}". Detalles: ${mensaje}`;
+    const texto = `Hola Deluces Films ✨, mi nombre es *${nombre}*.\nMe interesa cotizar un servicio de: *${tipoEvento}*.\n\nDetalles: ${mensaje}`;
     const url = `https://wa.me/${numeroWhatsApp}?text=${encodeURIComponent(texto)}`;
     window.open(url, '_blank');
   };
@@ -341,7 +326,7 @@ export default function Home() {
             <span className="w-2.5 h-2.5 bg-amber-600 rounded-full animate-pulse"></span>
             {mounted && (
               <img 
-                src={isDarkMode ? "/Logo Cam.png" : "/Logo Cam.png"} 
+                src="/Logo Cam.png" 
                 alt="Deluces Films" 
                 className="h-7 md:h-8 w-auto object-contain"
               />
@@ -375,6 +360,7 @@ export default function Home() {
             <button 
               onClick={toggleDarkMode}
               className="p-2 rounded-full df-card border df-border df-text"
+              aria-label="Cambiar tema"
             >
               {mounted && (isDarkMode ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} />)}
             </button>
@@ -515,7 +501,7 @@ export default function Home() {
                 { num: '01', title: 'Brief & Consulta', desc: 'Analizamos requerimientos, fecha y expectativas del proyecto.' },
                 { num: '02', title: 'Planificación', desc: 'Definición de equipo técnico, locaciones y cronograma.' },
                 { num: '03', title: 'Rodaje', desc: 'Cobertura impecable con cámaras, iluminación y audio dedicados.' },
-                { num: '04', title: 'Entrega Final', desc: 'Post-producción rigurosa y entrega en formatos profesionales.' }
+                { num: '04', title: 'Entrega Final', desc: 'Post-producción rigurosa y entrega en nuestra plataforma web privada.' }
               ].map((paso, idx) => (
                 <div key={idx} className="relative df-card p-6 rounded-2xl border df-border hover:border-amber-600/40 transition-all duration-300 hover:-translate-y-2 hover:shadow-xl group">
                   <div className="text-3xl font-black text-amber-600 mb-3 transition-transform duration-300 group-hover:scale-110">{paso.num}</div>
@@ -550,10 +536,16 @@ export default function Home() {
                   <div className="text-4xl font-black mb-6 df-text">S/ 400</div>
                   <ul className="space-y-4 mb-8 text-sm df-muted">
                     <li className="flex gap-3"><CheckCircle2 className="text-slate-500 w-5 h-5 flex-shrink-0"/> 4 horas de cobertura</li>
-                    <li className="flex gap-3"><CheckCircle2 className="text-slate-500 w-5 h-5 flex-shrink-0"/> 40 fotos editadas</li>
-                    <li className="flex gap-3"><CheckCircle2 className="text-slate-500 w-5 h-5 flex-shrink-0"/> Galería digital privada</li>
+                    <li className="flex gap-3"><CheckCircle2 className="text-slate-500 w-5 h-5 flex-shrink-0"/> 40 fotos editadas en alta resolución</li>
+                    <li className="flex gap-3"><CheckCircle2 className="text-slate-500 w-5 h-5 flex-shrink-0"/> Galería digital privada en nuestra web</li>
                   </ul>
                 </div>
+                <button 
+                  onClick={() => seleccionarPlan('Esencial', 'S/ 400')}
+                  className="w-full py-3 rounded-xl border df-border df-card df-text font-bold text-xs uppercase tracking-wider hover:border-amber-600 hover:text-amber-600 transition-all cursor-pointer"
+                >
+                  Elegir Plan Esencial
+                </button>
               </div>
               
               {/* PLAN CINEMÁTICO */}
@@ -565,10 +557,16 @@ export default function Home() {
                   <div className="text-4xl font-black mb-6 df-text">S/ 800</div>
                   <ul className="space-y-4 mb-8 text-sm df-text">
                     <li className="flex gap-3"><CheckCircle2 className="text-amber-600 w-5 h-5 flex-shrink-0"/> 8 horas de cobertura</li>
-                    <li className="flex gap-3"><CheckCircle2 className="text-amber-600 w-5 h-5 flex-shrink-0"/> Video resumen (3-5 min)</li>
-                    <li className="flex gap-3"><CheckCircle2 className="text-amber-600 w-5 h-5 flex-shrink-0"/> 60 fotos editadas</li>
+                    <li className="flex gap-3"><CheckCircle2 className="text-amber-600 w-5 h-5 flex-shrink-0"/> Video resumen (3-5 min) + Reel</li>
+                    <li className="flex gap-3"><CheckCircle2 className="text-amber-600 w-5 h-5 flex-shrink-0"/> 60 fotos editadas + Galería web</li>
                   </ul>
                 </div>
+                <button 
+                  onClick={() => seleccionarPlan('Cinemático', 'S/ 800')}
+                  className="w-full btn-shimmer text-white py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-xl transition-all cursor-pointer"
+                >
+                  Elegir Plan Cinemático
+                </button>
               </div>
 
               {/* PLAN PREMIUM */}
@@ -578,11 +576,17 @@ export default function Home() {
                   <span className="text-xs md:text-sm font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-500">desde</span>
                   <div className="text-4xl font-black mb-6 df-text">S/ 1200</div>
                   <ul className="space-y-4 mb-8 text-sm df-muted">
-                    <li className="flex gap-3"><CheckCircle2 className="text-blue-600 w-5 h-5 flex-shrink-0"/> Full Day (Preparativos a Fiesta)</li>
-                    <li className="flex gap-3"><CheckCircle2 className="text-blue-600 w-5 h-5 flex-shrink-0"/> Tomas con Dron</li>
-                    <li className="flex gap-3"><CheckCircle2 className="text-blue-600 w-5 h-5 flex-shrink-0"/> Video highlight + documental</li>
+                    <li className="flex gap-3"><CheckCircle2 className="text-blue-600 w-5 h-5 flex-shrink-0"/> Cobertura Completa + Sesión Previa</li>
+                    <li className="flex gap-3"><CheckCircle2 className="text-blue-600 w-5 h-5 flex-shrink-0"/> Multicámara + Transmisión en Vivo</li>
+                    <li className="flex gap-3"><CheckCircle2 className="text-blue-600 w-5 h-5 flex-shrink-0"/> Video highlight + documental + Fotos</li>
                   </ul>
                 </div>
+                <button 
+                  onClick={() => seleccionarPlan('Premium', 'S/ 1200')}
+                  className="w-full py-3 rounded-xl border df-border df-card df-text font-bold text-xs uppercase tracking-wider hover:border-blue-600 hover:text-blue-600 transition-all cursor-pointer"
+                >
+                  Elegir Plan Premium
+                </button>
               </div>
             </div>
           </div>
@@ -620,7 +624,7 @@ export default function Home() {
                     />
                   </button>
                   {faqAbierto === index && (
-                    <div className="px-6 pb-6 pt-0 df-muted text-sm md:text-base leading-relaxed animate-fade-in border-t df-border pt-4">
+                    <div className="px-6 pb-6 df-muted text-sm md:text-base leading-relaxed animate-fade-in border-t df-border pt-4">
                       {faq.respuesta}
                     </div>
                   )}
@@ -652,30 +656,32 @@ export default function Home() {
                 </div>
                 <div className="flex items-center gap-4 transition-transform duration-300 hover:translate-x-1">
                   <div className="w-12 h-12 df-bg rounded-xl flex items-center justify-center df-text shadow-xs"><Mail size={20}/></div>
-                  <div><p className="text-xs df-muted">Email</p><p className="font-semibold df-text">delucesvisual@gmail.com</p></div>
+                  <div><p className="text-xs df-muted">Email</p><p className="font-semibold df-text">deluces.studio@gmail.com</p></div>
                 </div>
                 <div className="flex items-center gap-4 transition-transform duration-300 hover:translate-x-1">
                   <div className="w-12 h-12 df-bg rounded-xl flex items-center justify-center df-text shadow-xs"><MapPin size={20}/></div>
-                  <div><p className="text-xs df-muted">Ubicación</p><p className="font-semibold df-text">Perú</p></div>
+                  <div><p className="text-xs df-muted">Ubicación</p><p className="font-semibold df-text">Cerro de Pasco · y todo el Perú</p></div>
                 </div>
               </div>
             </div>
 
             <div className="df-bg p-8 rounded-2xl border df-border shadow-xl transition-all duration-300 hover:shadow-2xl">
               <form onSubmit={handleWhatsAppSubmit} className="space-y-4">
-                {/* Selector de Tipo de Evento */}
                 <div>
-                  <label className="text-xs font-bold df-muted mb-1.5 block">Tipo de Evento</label>
+                  <label className="text-xs font-bold df-muted mb-1.5 block">Tipo de Evento o Servicio</label>
                   <select 
                     value={tipoEvento}
                     onChange={(e) => setTipoEvento(e.target.value)}
                     required
                     className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors df-text text-sm cursor-pointer"
                   >
-                    <option value="" disabled selected>Selecciona el tipo de evento</option>
+                    <option value="" disabled>Selecciona el tipo de evento</option>
                     <option value="Eventos Institucionales">Eventos Institucionales</option>
+                    <option value="Promociones y Eventos Escolares">Promociones y Eventos Escolares (Casacas / Cuadros)</option>
+                    <option value="Eventos Sociales / 15 Años / Cumpleaños">Eventos Sociales / 15 Años / Cumpleaños</option>
                     <option value="Sesión de Fotos de Pareja">Sesión de Fotos de Pareja</option>
-                    <option value="Publicidad para Negocios">Publicidad para Negocios</option>
+                    <option value="Publicidad y Reels para Negocios">Publicidad y Reels para Negocios</option>
+                    <option value="Fotografía Deportiva">Fotografía Deportiva</option>
                     <option value="Revelación de Género / Sociales">Revelación de Género / Sociales</option>
                     <option value="Fiestas Patronales">Fiestas Patronales</option>
                     <option value="Videoclips y Grupos de Baile">Videoclips y Grupos de Baile</option>
@@ -684,7 +690,6 @@ export default function Home() {
                   </select>
                 </div>
 
-                {/* Nombre */}
                 <div>
                   <label className="text-xs font-bold df-muted mb-1.5 block">Tu Nombre</label>
                   <input 
@@ -697,20 +702,18 @@ export default function Home() {
                   />
                 </div>
                 
-                {/* Mensaje */}
                 <div>
-                  <label className="text-xs font-bold df-muted mb-1.5 block">Mensaje</label>
+                  <label className="text-xs font-bold df-muted mb-1.5 block">Mensaje (Fecha, lugar o detalles)</label>
                   <textarea 
                     rows="4" 
                     value={mensaje}
                     onChange={(e) => setMensaje(e.target.value)}
                     required
                     className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors resize-none df-text text-sm" 
-                    placeholder="Cuéntanos los detalles..."
+                    placeholder="Cuéntanos la fecha aproximada, lugar y qué tienes en mente..."
                   ></textarea>
                 </div>
 
-                {/* Botón de envío */}
                 <button type="submit" className="w-full btn-shimmer text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-md hover:shadow-xl flex items-center justify-center gap-2 text-sm active:scale-95 cursor-pointer">
                   <Send size={18} /> Enviar Mensaje por WhatsApp
                 </button>
@@ -732,7 +735,7 @@ export default function Home() {
 
         {/* BOTÓN FLOTANTE: ACCESO A CLIENTES */}
         <Link 
-          href="/clientes" /* ⚠️ CAMBIA ESTO si la ruta de tu página se llama diferente (ej: /area-clientes) */
+          href="/clientes"
           className="fixed bottom-6 left-6 z-50 bg-black/95 dark:bg-white/95 backdrop-blur-md border border-white/20 dark:border-black/20 pl-2 pr-4 py-2 rounded-full shadow-2xl flex items-center gap-3 transition-transform duration-300 hover:scale-105 cursor-pointer"
         >
           <div className="bg-amber-600 rounded-full p-2 relative">
@@ -769,18 +772,14 @@ export default function Home() {
         <footer className="py-8 px-6 border-t df-border text-center df-muted text-xs df-card">
           <p 
             onClick={() => {
-              // Contamos los clics seguidos
               window.adminClicks = (window.adminClicks || 0) + 1;
               if (window.adminClicks === 3) {
                 window.adminClicks = 0;
-                // Redirige a tu ruta secreta
                 window.location.href = '/gestion-deluces'; 
               }
-              // Reinicia el contador si no hace los 3 clics en 1.5 segundos
               setTimeout(() => { window.adminClicks = 0; }, 1500);
             }}
             className="cursor-default select-none inline-block hover:text-amber-500/80 transition-colors"
-            title=""
           >
             © 2026 Deluces Films. Todos los derechos reservados.
           </p>
