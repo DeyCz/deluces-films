@@ -1,7 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { Camera, Video, Film, ArrowLeft, Send, Play, X, Eye, ArrowUp, Sun, Moon, MapPin, Smartphone, Lock, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Camera, Video, Film, ArrowLeft, Send, Play, X, Eye, ArrowUp, 
+  Sun, Moon, MapPin, Smartphone, Lock, ChevronLeft, ChevronRight, 
+  FolderOpen, Images, ArrowRight, LayoutGrid
+} from 'lucide-react';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
@@ -81,7 +85,6 @@ const infoCategorias = {
   }
 };
 
-// Convierte links compartidos de Drive en miniatura directa si fuera necesario
 const formatearImagenUrl = (url) => {
   if (!url) return '/institucional.jpg';
   if (url.includes('drive.google.com/file/d/')) {
@@ -97,6 +100,9 @@ export default function SlugClient({ slug }) {
 
   const [galeriaFotos, setGaleriaFotos] = useState([]);
   const [cargandoFotos, setCargandoFotos] = useState(true);
+
+  // Estado para controlar qué carpeta está abierta actualmente (null = mostrando carpetas)
+  const [carpetaActiva, setCarpetaActiva] = useState(null);
 
   const [nombre, setNombre] = useState('');
   const [tipoEvento, setTipoEvento] = useState(data ? data.formulario : '');
@@ -157,7 +163,54 @@ export default function SlugClient({ slug }) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Control por teclado para la galería (Izquierda, Derecha, Escape)
+  // ==========================================================
+  // LÓGICA DE AGRUPACIÓN POR CARPETAS / INSTITUCIONES
+  // ==========================================================
+  const { usaCarpetas, listaCarpetas } = useMemo(() => {
+    const tieneAlgunaCarpeta = galeriaFotos.some(item => item.carpeta && item.carpeta.trim() !== '');
+    if (!tieneAlgunaCarpeta) {
+      return { usaCarpetas: false, listaCarpetas: [] };
+    }
+
+    const mapa = new Map();
+    galeriaFotos.forEach(item => {
+      // Si hay fotos antiguas sin carpeta, se agrupan automáticamente para nunca mezclarse con las nuevas
+      const nombreCarpeta = (item.carpeta && item.carpeta.trim() !== '') 
+        ? item.carpeta.trim() 
+        : 'Galería Destacada';
+
+      if (!mapa.has(nombreCarpeta)) {
+        mapa.set(nombreCarpeta, []);
+      }
+      mapa.get(nombreCarpeta).push(item);
+    });
+
+    const arregloCarpetas = Array.from(mapa.entries()).map(([nombre, items]) => {
+      const totalVideos = items.filter(i => i.videoUrl).length;
+      const totalFotos = items.length - totalVideos;
+      return {
+        nombre,
+        items,
+        portada: items[0]?.imagenUrl || '/institucional.jpg',
+        miniaturas: items.slice(0, 4).map(i => i.imagenUrl),
+        total: items.length,
+        totalFotos,
+        totalVideos
+      };
+    });
+
+    return { usaCarpetas: true, listaCarpetas: arregloCarpetas };
+  }, [galeriaFotos]);
+
+  // Elementos visibles actualmente (si hay una carpeta abierta, solo muestra las fotos de esa carpeta)
+  const itemsVisibles = useMemo(() => {
+    if (!usaCarpetas) return galeriaFotos;
+    if (!carpetaActiva) return [];
+    const carpetaEncontrada = listaCarpetas.find(c => c.nombre === carpetaActiva);
+    return carpetaEncontrada ? carpetaEncontrada.items : [];
+  }, [usaCarpetas, carpetaActiva, listaCarpetas, galeriaFotos]);
+
+  // Control por teclado para la galería (recorre solo la carpeta activa)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (!modalAbierto) return;
@@ -167,7 +220,7 @@ export default function SlugClient({ slug }) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [modalAbierto, indiceActual, galeriaFotos]);
+  }, [modalAbierto, indiceActual, itemsVisibles]);
 
   const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
   const goToTop = (e) => {
@@ -175,10 +228,10 @@ export default function SlugClient({ slug }) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Funciones de la Galería
+  // Funciones del Modal Multimedia
   const abrirModal = (index) => {
     setIndiceActual(index);
-    setTrabajoSeleccionado(galeriaFotos[index]);
+    setTrabajoSeleccionado(itemsVisibles[index]);
     setModalAbierto(true);
   };
   
@@ -189,22 +242,23 @@ export default function SlugClient({ slug }) {
 
   const irSiguiente = (e) => {
     if (e) e.stopPropagation();
-    const nuevoIndice = (indiceActual + 1) % galeriaFotos.length;
+    if (itemsVisibles.length === 0) return;
+    const nuevoIndice = (indiceActual + 1) % itemsVisibles.length;
     setIndiceActual(nuevoIndice);
-    setTrabajoSeleccionado(galeriaFotos[nuevoIndice]);
+    setTrabajoSeleccionado(itemsVisibles[nuevoIndice]);
   };
 
   const irAnterior = (e) => {
     if (e) e.stopPropagation();
-    const nuevoIndice = (indiceActual - 1 + galeriaFotos.length) % galeriaFotos.length;
+    if (itemsVisibles.length === 0) return;
+    const nuevoIndice = (indiceActual - 1 + itemsVisibles.length) % itemsVisibles.length;
     setIndiceActual(nuevoIndice);
-    setTrabajoSeleccionado(galeriaFotos[nuevoIndice]);
+    setTrabajoSeleccionado(itemsVisibles[nuevoIndice]);
   };
 
-  // Soporte para deslizar con el dedo en celulares (Swipe)
   const handleTouchStart = (e) => setTouchStartX(e.touches[0].clientX);
   const handleTouchEnd = (e) => {
-    if (touchStartX === null || galeriaFotos.length <= 1) return;
+    if (touchStartX === null || itemsVisibles.length <= 1) return;
     const diff = touchStartX - e.changedTouches[0].clientX;
     if (diff > 50) irSiguiente();
     if (diff < -50) irAnterior();
@@ -214,13 +268,11 @@ export default function SlugClient({ slug }) {
   const handleWhatsAppSubmit = (e) => {
     e.preventDefault();
     const texto = `Hola Deluces Films ✨, mi nombre es *${nombre}*.\nEstoy interesado en cotizar un servicio de: *${tipoEvento}*.\n\nDetalles: ${mensaje}`;
-    window.open(`https://wa.me/51967576214?text=${encodeURIComponent(texto)}`, '_blank');
+    window.open(`https://api.whatsapp.com/send?phone=51967576214&text=${encodeURIComponent(texto)}`, '_blank');
   };
 
-  // FUNCIÓN DE EMBED COMPATIBLE CON YOUTUBE, SHORTS Y GOOGLE DRIVE
   const obtenerLinkEmbed = (url) => {
     if (!url) return '';
-
     if (url.includes('youtube.com/watch?v=')) {
       const id = url.split('watch?v=')[1]?.split('&')[0];
       return `https://www.youtube.com/embed/${id}?rel=0&modestbranding=1&playsinline=1`;
@@ -237,12 +289,12 @@ export default function SlugClient({ slug }) {
       const fileId = url.split('/d/')[1]?.split('/')[0];
       return `https://drive.google.com/file/d/${fileId}/preview`;
     }
-
     return url;
   };
 
   const IconComponent = data.icono;
   const esVideoHorizontal = trabajoSeleccionado?.formatoVideo === 'horizontal';
+  const badgeColorBg = data.colorText.replace('text-', 'bg-');
 
   return (
     <div className="min-h-screen df-bg df-text font-sans relative">
@@ -261,7 +313,7 @@ export default function SlugClient({ slug }) {
         </div>
       </nav>
 
-      <header className="pt-32 pb-16 px-6 md:px-12 text-center max-w-4xl mx-auto animate-fade-in">
+      <header className="pt-32 pb-12 px-6 md:px-12 text-center max-w-4xl mx-auto animate-fade-in">
         <div className={`inline-flex items-center justify-center w-16 h-16 df-card border df-border rounded-2xl mb-6 shadow-md ${data.colorText}`}>
           <IconComponent size={30} />
         </div>
@@ -270,21 +322,178 @@ export default function SlugClient({ slug }) {
         <p className="df-muted text-lg max-w-2xl mx-auto font-normal">{data.desc}</p>
       </header>
 
-      <section className="py-12 px-6 md:px-12 max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h2 className="text-2xl font-bold df-text">Muestras del Servicio</h2>
-          <span className="text-xs df-muted uppercase tracking-wider">Portafolio Web</span>
+      <section className="py-8 px-6 md:px-12 max-w-6xl mx-auto">
+        {/* ENCABEZADO DINÁMICO DE SECCIÓN */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div>
+            <h2 className="text-2xl font-bold df-text flex items-center gap-2.5">
+              {usaCarpetas && !carpetaActiva ? (
+                <>
+                  <FolderOpen size={24} className="text-amber-600" />
+                  Álbumes y Carpetas por Institución / Evento
+                </>
+              ) : usaCarpetas && carpetaActiva ? (
+                <>
+                  <FolderOpen size={24} className="text-amber-600" />
+                  {carpetaActiva}
+                </>
+              ) : (
+                'Muestras del Servicio'
+              )}
+            </h2>
+            <p className="text-xs df-muted mt-1">
+              {usaCarpetas && !carpetaActiva 
+                ? 'Selecciona una carpeta para explorar la galería exclusiva de cada institución o evento sin mezclarlas.'
+                : usaCarpetas && carpetaActiva 
+                  ? `Explorando ${itemsVisibles.length} archivos de esta carpeta.`
+                  : 'Haz clic en cualquier elemento para visualizarlo en pantalla completa.'}
+            </p>
+          </div>
+
+          {usaCarpetas && carpetaActiva ? (
+            <button
+              onClick={() => setCarpetaActiva(null)}
+              className="df-card border df-border hover:border-amber-600 df-text px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-sm hover:shadow-md cursor-pointer w-fit"
+            >
+              <LayoutGrid size={15} className="text-amber-600" />
+              Ver todas las carpetas ({listaCarpetas.length})
+            </button>
+          ) : (
+            <span className="text-xs df-muted uppercase tracking-wider font-semibold">
+              {usaCarpetas ? `${listaCarpetas.length} Carpetas Disponibles` : 'Portafolio Web'}
+            </span>
+          )}
         </div>
 
+        {/* BARRA RÁPIDA DE PESTAÑAS DE CARPETAS (Cuando estás dentro de una carpeta) */}
+        {usaCarpetas && carpetaActiva && listaCarpetas.length > 1 && (
+          <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 custom-scrollbar">
+            <button
+              onClick={() => setCarpetaActiva(null)}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold df-card border df-border df-muted hover:df-text flex items-center gap-1.5 flex-shrink-0 cursor-pointer transition-all"
+            >
+              <ArrowLeft size={14} /> Todas
+            </button>
+            {listaCarpetas.map((carpeta) => {
+              const activa = carpeta.nombre === carpetaActiva;
+              return (
+                <button
+                  key={carpeta.nombre}
+                  onClick={() => setCarpetaActiva(carpeta.nombre)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-2 flex-shrink-0 cursor-pointer transition-all ${
+                    activa 
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-md' 
+                      : 'df-card df-border df-text hover:border-amber-600/50'
+                  }`}
+                >
+                  <FolderOpen size={14} />
+                  <span>{carpeta.nombre}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activa ? 'bg-black/25 text-white' : 'df-bg df-muted'}`}>
+                    {carpeta.total}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* CONTENIDO PRINCIPAL: CARGANDO / VACÍO / VISTA DE CARPETAS / VISTA DE FOTOS */}
         {cargandoFotos ? (
           <div className="text-center py-12 df-muted text-sm">Cargando portafolio desde la nube...</div>
         ) : galeriaFotos.length === 0 ? (
           <div className="df-card border df-border p-12 rounded-3xl text-center">
             <p className="df-muted text-sm">Pronto agregaremos muestras exclusivas para esta categoría.</p>
           </div>
+        ) : usaCarpetas && !carpetaActiva ? (
+          /* ========================================================== */
+          /* DISEÑO ESPECTACULAR DE CARPETAS / ÁLBUMES APILADOS         */
+          /* ========================================================== */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pt-4">
+            {listaCarpetas.map((carpeta, idx) => (
+              <div
+                key={idx}
+                onClick={() => setCarpetaActiva(carpeta.nombre)}
+                className="group relative cursor-pointer pt-3"
+              >
+                {/* Capas traseras que simulan fotos apiladas dentro de la carpeta */}
+                <div className="absolute top-0 left-6 right-6 h-40 rounded-3xl df-card border df-border opacity-50 transform -translate-y-2 scale-95 group-hover:-translate-y-4 group-hover:rotate-2 transition-all duration-500 z-0 shadow-sm overflow-hidden">
+                  {carpeta.miniaturas[2] && (
+                    <img src={formatearImagenUrl(carpeta.miniaturas[2])} alt="" className="w-full h-full object-cover opacity-40" />
+                  )}
+                </div>
+                <div className="absolute top-1.5 left-3 right-3 h-40 rounded-3xl df-card border df-border opacity-75 transform -translate-y-1 scale-[0.98] group-hover:-translate-y-2.5 group-hover:-rotate-1 transition-all duration-500 z-0 shadow-md overflow-hidden">
+                  {carpeta.miniaturas[1] && (
+                    <img src={formatearImagenUrl(carpeta.miniaturas[1])} alt="" className="w-full h-full object-cover opacity-50" />
+                  )}
+                </div>
+
+                {/* Tarjeta Frontal Principal de la Carpeta */}
+                <div className="relative h-[330px] df-card rounded-3xl overflow-hidden border df-border shadow-lg group-hover:shadow-2xl group-hover:border-amber-600/60 transition-all duration-500 z-10 flex flex-col justify-between bg-black">
+                  
+                  {/* Imagen de Portada de la Carpeta */}
+                  <img
+                    src={formatearImagenUrl(carpeta.portada)}
+                    alt={carpeta.nombre}
+                    className="absolute inset-0 w-full h-full object-cover opacity-85 group-hover:opacity-100 group-hover:scale-110 transition-all duration-700 z-0"
+                    loading="lazy"
+                  />
+
+                  {/* Gradiente oscuro elegante */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/45 to-black/20 z-10" />
+
+                  {/* Parte Superior: Etiqueta de Álbum + Contador */}
+                  <div className="relative z-20 p-5 flex justify-between items-start">
+                    <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-amber-400 bg-black/60 border border-amber-500/40 px-3 py-1.5 rounded-full backdrop-blur-md shadow-sm">
+                      <FolderOpen size={13} className="text-amber-400" />
+                      Álbum
+                    </span>
+
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-white/15 border border-white/20 px-3 py-1 rounded-full backdrop-blur-md">
+                      <Images size={13} />
+                      {carpeta.total} {carpeta.total === 1 ? 'archivo' : 'archivos'}
+                    </span>
+                  </div>
+
+                  {/* Parte Inferior: Nombre de la Institución + Miniaturas + Botón */}
+                  <div className="relative z-20 p-6">
+                    <p className="text-[10px] uppercase tracking-widest text-amber-400 font-bold mb-1">
+                      {data.titulo}
+                    </p>
+                    <h3 className="text-xl md:text-2xl font-extrabold text-white leading-snug drop-shadow-md group-hover:text-amber-400 transition-colors">
+                      {carpeta.nombre}
+                    </h3>
+
+                    {/* Barra inferior con miniaturas apiladas de vista previa y botón de abrir */}
+                    <div className="mt-4 pt-3 border-t border-white/15 flex items-center justify-between">
+                      <div className="flex items-center -space-x-2 overflow-hidden">
+                        {carpeta.miniaturas.slice(0, 3).map((thumb, i) => (
+                          <div key={i} className="w-8 h-8 rounded-full border-2 border-black overflow-hidden bg-gray-800 flex-shrink-0">
+                            <img src={formatearImagenUrl(thumb)} alt="" className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                        {carpeta.total > 3 && (
+                          <div className="w-8 h-8 rounded-full border-2 border-black bg-amber-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                            +{carpeta.total - 3}
+                          </div>
+                        )}
+                      </div>
+
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white group-hover:translate-x-1 transition-transform">
+                        Abrir carpeta <ArrowRight size={15} className="text-amber-400" />
+                      </span>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {galeriaFotos.map((foto, index) => (
+          /* ========================================================== */
+          /* CUADRÍCULA DE FOTOS Y VIDEOS (DENTRO DE LA CARPETA)        */
+          /* ========================================================== */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
+            {itemsVisibles.map((foto, index) => (
               <div 
                 key={foto.id} 
                 onClick={() => abrirModal(index)}
@@ -311,8 +520,8 @@ export default function SlugClient({ slug }) {
                 </div>
                 
                 <div className="absolute bottom-4 left-4 right-4 z-20">
-                  <span className={`text-[10px] uppercase tracking-wider font-bold text-white px-2.5 py-1 rounded-md shadow-xs ${data.colorText.replace('text-', 'bg-')}`}>
-                    {foto.videoUrl ? 'Video' : 'Fotografía'}
+                  <span className={`text-[10px] uppercase tracking-wider font-bold text-white px-2.5 py-1 rounded-md shadow-xs ${badgeColorBg}`}>
+                    {foto.videoUrl ? 'Video' : (foto.carpeta || 'Fotografía')}
                   </span>
                   <h3 className="text-base font-bold mt-2 text-white drop-shadow-md">{foto.titulo}</h3>
                 </div>
@@ -322,7 +531,7 @@ export default function SlugClient({ slug }) {
         )}
       </section>
 
-      {/* MODAL MULTIMEDIA OPTIMIZADO (Soporta Vertical 9:16 y Horizontal 16:9 sin recortar controles) */}
+      {/* MODAL MULTIMEDIA OPTIMIZADO */}
       {modalAbierto && (
         <div 
           onClick={cerrarModal}
@@ -334,7 +543,7 @@ export default function SlugClient({ slug }) {
             <X size={20} strokeWidth={2} />
           </button>
 
-          {galeriaFotos.length > 1 && (
+          {itemsVisibles.length > 1 && (
             <>
               <button 
                 onClick={irAnterior}
@@ -382,6 +591,11 @@ export default function SlugClient({ slug }) {
 
             <div className="mt-4 md:mt-6 w-full flex flex-col md:flex-row items-center justify-between gap-4 px-2 bg-black/40 md:bg-transparent p-3 md:p-0 rounded-xl backdrop-blur-sm md:backdrop-blur-none">
               <div className="text-center md:text-left">
+                {trabajoSeleccionado?.carpeta && (
+                  <span className="text-[10px] uppercase tracking-widest text-amber-400 font-bold block mb-0.5">
+                    📁 {trabajoSeleccionado.carpeta}
+                  </span>
+                )}
                 <h3 className="text-base md:text-xl font-bold text-white tracking-wide">
                   {trabajoSeleccionado?.titulo}
                 </h3>
@@ -391,7 +605,7 @@ export default function SlugClient({ slug }) {
                   </p>
                   <span className="text-xs text-white/30">•</span>
                   <p className="text-[10px] text-white/50 font-medium">
-                    {indiceActual + 1} / {galeriaFotos.length}
+                    {indiceActual + 1} / {itemsVisibles.length}
                   </p>
                 </div>
               </div>
@@ -399,7 +613,7 @@ export default function SlugClient({ slug }) {
               <a 
                 href="#contacto-servicio" 
                 onClick={cerrarModal} 
-                className={`px-5 py-2.5 rounded-xl text-white text-xs md:text-sm font-bold transition-all shadow-lg hover:shadow-xl flex items-center gap-2 cursor-pointer ${data.colorText.replace('text-', 'bg-')}`}
+                className={`px-5 py-2.5 rounded-xl text-white text-xs md:text-sm font-bold transition-all shadow-lg hover:shadow-xl flex items-center gap-2 cursor-pointer ${badgeColorBg}`}
               >
                 Cotizar este servicio
               </a>
@@ -449,8 +663,8 @@ export default function SlugClient({ slug }) {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-bold df-muted mb-1.5 block">Tu Nombre / Empresa</label>
-                <input type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} required className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors df-text text-sm" placeholder="Ej. Juan Pérez" />
+                <label className="text-xs font-bold df-muted mb-1.5 block">Tu Nombre / Institución / Empresa</label>
+                <input type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} required className="w-full df-card border df-border rounded-xl px-4 py-3 focus:outline-none focus:border-amber-600 transition-colors df-text text-sm" placeholder="Ej. Juan Pérez / I.E. Almirante Grau" />
               </div>
               <div>
                 <label className="text-xs font-bold df-muted mb-1.5 block">Detalles del proyecto</label>
@@ -487,7 +701,7 @@ export default function SlugClient({ slug }) {
         </div>
       </Link>
 
-      <a href="https://wa.me/51967576214?text=Hola,%20me%20interesa%20cotizar%20un%20servicio%20audiovisual." target="_blank" rel="noopener noreferrer" className="fixed bottom-6 right-6 z-50 bg-[#25D366] text-white p-3.5 rounded-full shadow-2xl whatsapp-pulse transition-all duration-300 flex items-center justify-center group cursor-pointer">
+      <a href="https://api.whatsapp.com/send?phone=51967576214&text=Hola,%20me%20interesa%20cotizar%20un%20servicio%20audiovisual." target="_blank" rel="noopener noreferrer" className="fixed bottom-6 right-6 z-50 bg-[#25D366] text-white p-3.5 rounded-full shadow-2xl whatsapp-pulse transition-all duration-300 flex items-center justify-center group cursor-pointer">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="white" className="flex-shrink-0"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448zM12.002 2.15c-5.436 0-9.851 4.415-9.853 9.852-.001 1.872.518 3.704 1.509 5.31l-1.004 3.673 3.766-.988c1.554.948 3.351 1.447 5.182 1.448 5.436 0 9.851-4.415 9.853-9.852.001-5.303-4.315-9.621-9.653-9.623zm5.367 13.916c-.225.635-1.309 1.181-1.801 1.259-.467.074-1.07.135-3.078-.696-2.613-1.088-4.316-3.76-4.448-3.935-.132-.176-1.066-1.417-1.066-2.703 0-1.286.669-1.916.907-2.174.238-.258.519-.323.691-.323.173 0 .346.001.498.008.161.008.379-.061.594.464.226.553.774 1.887.842 2.025.068.138.113.3.023.482-.09.183-.135.297-.27.458-.135.161-.284.36-.406.484-.135.138-.277.288-.12.56.157.272.698 1.155 1.499 1.871 1.033.921 1.904 1.206 2.176 1.344.272.138.432.115.592-.069.16-.184.686-.798.868-1.072.182-.274.364-.229.614-.138.25.092 1.586.748 1.856.884.27.135.45.203.516.315.066.113.066.653-.159 1.288z"/></svg>
         <span className="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs group-hover:ml-2 transition-all duration-500 text-sm font-bold">¡Escríbenos!</span>
       </a>

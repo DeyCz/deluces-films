@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db, auth } from '@/lib/firebase';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   ShieldCheck, PlusCircle, ArrowLeft, Image as ImageIcon, 
-  Trash2, Edit2, X, RefreshCw, Video, LogOut, Copy, Send, Search, Plus, BookOpen, Star
+  Trash2, Edit2, X, RefreshCw, Video, LogOut, Copy, Send, 
+  Search, Plus, BookOpen, Star, FolderOpen, Layers
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -20,13 +21,12 @@ const normalizarImagenUrl = (url) => {
   return limpia;
 };
 
-// Genera link universal de WhatsApp que no falla ni es bloqueado por el navegador
 const obtenerUrlWhatsAppEntrega = (cliente) => {
   const texto = `¡Hola! 👋✨ Espero que se encuentren muy bien.\n\nMe emociona avisarles que ya están listos los archivos y el Álbum Digital de *${cliente.nombreCliente}* (${cliente.tipo}). 📸🎥🎉\n\nPara ver su álbum interactivo y descargar todo su material en alta calidad, pueden ingresar directamente a nuestra plataforma web:\n\n🌐 *Enlace directo:* https://deluces-films.vercel.app/clientes?code=${encodeURIComponent(cliente.password)}\n🔑 *Contraseña:* ${cliente.password}\n\nDe parte de *Deluces Films*, muchas gracias por confiar en nosotros para capturar estos recuerdos. ¡Que lo disfruten muchísimo! 🥂🎬`;
   
   const textoCodificado = encodeURIComponent(texto);
   let fono = (cliente.telefonoCliente || '').replace(/\D/g, '');
-  if (fono.length === 9) fono = `51${fono}`; // Agrega código de Perú automáticamente si tiene 9 dígitos
+  if (fono.length === 9) fono = `51${fono}`;
 
   if (fono) {
     return `https://api.whatsapp.com/send?phone=${fono}&text=${textoCodificado}`;
@@ -59,13 +59,23 @@ export default function AdminPage() {
   const [editandoClienteId, setEditandoClienteId] = useState(null);
   const [busquedaCliente, setBusquedaCliente] = useState('');
 
-  // ESTADOS GALERÍA PORTAFOLIO
-  const galeriaInicial = { slug: 'institucional', titulo: '', orden: 1, imagenUrl: '', videoUrl: '', formatoVideo: 'vertical' };
+  // ESTADOS GALERÍA PORTAFOLIO (Ahora soporta Carpeta / Institución y Subida por Lote)
+  const galeriaInicial = { 
+    slug: 'institucional', 
+    carpeta: '', 
+    titulo: '', 
+    orden: 1, 
+    imagenUrl: '', 
+    loteImagenesTexto: '',
+    modoLote: false,
+    videoUrl: '', 
+    formatoVideo: 'vertical' 
+  };
   const [formGaleria, setFormGaleria] = useState(galeriaInicial);
   const [cargandoGaleria, setCargandoGaleria] = useState(false);
   const [listaGaleria, setListaGaleria] = useState([]);
   const [editandoFotoId, setEditandoFotoId] = useState(null);
-  const [filtroCategoria, setFiltroCategoria] = useState('todas');
+  const [filtroCategoria, setFiltroCategoria] = useState('institucional');
 
   // ESTADOS TESTIMONIOS RECIBIDOS
   const [listaTestimonios, setListaTestimonios] = useState([]);
@@ -97,6 +107,14 @@ export default function AdminPage() {
       setTimeout(() => setRefrescando(false), 500); 
     }
   };
+
+  // Detectar carpetas ya existentes en la categoría seleccionada para autocompletar
+  const carpetasExistentesEnCategoria = useMemo(() => {
+    const nombres = listaGaleria
+      .filter(f => f.slug === formGaleria.slug && f.carpeta && f.carpeta.trim() !== '')
+      .map(f => f.carpeta.trim());
+    return [...new Set(nombres)];
+  }, [listaGaleria, formGaleria.slug]);
 
   useEffect(() => {
     if (!editandoFotoId && user) {
@@ -212,34 +230,131 @@ export default function AdminPage() {
     alert(`¡Mensaje de entrega para "${cliente.nombreCliente}" copiado al portapapeles!`);
   };
 
+  // ==========================================================
+  // GUARDAR EN PORTAFOLIO (INDIVIDUAL O POR LOTE A UNA CARPETA)
+  // ==========================================================
   const handleSubmitGaleria = async (e) => {
     e.preventDefault();
     setCargandoGaleria(true);
     try {
+      const carpetaLimpia = (formGaleria.carpeta || '').trim();
       const cleanVideoUrl = formGaleria.videoUrl?.trim() || "";
-      const dataToSave = { 
-        ...formGaleria, 
-        imagenUrl: normalizarImagenUrl(formGaleria.imagenUrl),
-        orden: Number(formGaleria.orden) || 1,
-        videoUrl: cleanVideoUrl,
-        formatoVideo: formGaleria.formatoVideo || 'vertical'
-      };
 
-      if (editandoFotoId) {
-        await updateDoc(doc(db, "galerias", editandoFotoId), dataToSave);
-        alert('¡Contenido actualizado correctamente!');
-        setEditandoFotoId(null);
+      // Si el usuario activó Subida por Lote (varias fotos de una institución a la vez)
+      if (!editandoFotoId && formGaleria.modoLote) {
+        const urls = (formGaleria.loteImagenesTexto || '')
+          .split('\n')
+          .map(linea => normalizarImagenUrl(linea))
+          .filter(u => u !== '');
+
+        if (urls.length === 0) {
+          alert('Pega al menos un enlace de foto en la lista.');
+          setCargandoGaleria(false);
+          return;
+        }
+
+        const ordenBase = Number(formGaleria.orden) || 1;
+        await Promise.all(
+          urls.map((imgUrl, idx) =>
+            addDoc(collection(db, "galerias"), {
+              slug: formGaleria.slug,
+              carpeta: carpetaLimpia,
+              titulo: formGaleria.titulo.trim() || `${carpetaLimpia || 'Fotografía'} #${idx + 1}`,
+              orden: ordenBase + idx,
+              imagenUrl: imgUrl,
+              videoUrl: '',
+              formatoVideo: 'vertical',
+              createdAt: new Date()
+            })
+          )
+        );
+        alert(`¡${urls.length} fotografías agregadas a la carpeta "${carpetaLimpia || formGaleria.slug}"!`);
       } else {
-        await addDoc(collection(db, "galerias"), { ...dataToSave, createdAt: new Date() });
-        alert('¡Contenido agregado al portafolio!');
+        // Subida o Edición Individual
+        const dataToSave = { 
+          slug: formGaleria.slug,
+          carpeta: carpetaLimpia,
+          titulo: formGaleria.titulo.trim(),
+          imagenUrl: normalizarImagenUrl(formGaleria.imagenUrl),
+          orden: Number(formGaleria.orden) || 1,
+          videoUrl: cleanVideoUrl,
+          formatoVideo: formGaleria.formatoVideo || 'vertical'
+        };
+
+        if (editandoFotoId) {
+          await updateDoc(doc(db, "galerias", editandoFotoId), dataToSave);
+          alert('¡Contenido actualizado correctamente!');
+          setEditandoFotoId(null);
+        } else {
+          await addDoc(collection(db, "galerias"), { ...dataToSave, createdAt: new Date() });
+          alert('¡Contenido agregado al portafolio!');
+        }
       }
       
-      setFormGaleria({ ...galeriaInicial, slug: formGaleria.slug }); 
+      setFormGaleria({ 
+        ...galeriaInicial, 
+        slug: formGaleria.slug, 
+        carpeta: carpetaLimpia // Mantiene el nombre de carpeta activo por si quiere seguir subiendo a la misma
+      }); 
       cargarDatos();
     } catch (error) {
+      console.error(error);
       alert('Hubo un error al subir el archivo.');
     } finally {
       setCargandoGaleria(false);
+    }
+  };
+
+  // HERRAMIENTA 1-CLIC: Agrupar fotos antiguas que no tenían carpeta en una carpeta nueva
+  const agruparFotosSueltasEnCarpeta = async (slugCategoria) => {
+    const fotosSueltas = listaGaleria.filter(
+      f => f.slug === slugCategoria && (!f.carpeta || f.carpeta.trim() === '')
+    );
+    if (fotosSueltas.length === 0) return;
+
+    const nombreNuevaCarpeta = window.prompt(
+      `Tienes ${fotosSueltas.length} fotos sin carpeta en /${slugCategoria}.\n\nEscribe el nombre de la Institución, Colegio o Asociación para agruparlas todas en esa carpeta (Ej: I.E. Almirante Grau):`
+    );
+
+    if (!nombreNuevaCarpeta || !nombreNuevaCarpeta.trim()) return;
+
+    setRefrescando(true);
+    try {
+      await Promise.all(
+        fotosSueltas.map(foto =>
+          updateDoc(doc(db, "galerias", foto.id), { carpeta: nombreNuevaCarpeta.trim() })
+        )
+      );
+      alert(`¡Listo! Las ${fotosSueltas.length} fotos ahora están dentro de la carpeta "${nombreNuevaCarpeta.trim()}".`);
+      cargarDatos();
+    } catch (err) {
+      alert('Error al agrupar las fotos.');
+    } finally {
+      setRefrescando(false);
+    }
+  };
+
+  // HERRAMIENTA 1-CLIC: Renombrar una carpeta completa
+  const renombrarCarpetaCompleta = async (slugCategoria, nombreActual) => {
+    const nuevoNombre = window.prompt(`Cambiar el nombre de la carpeta "${nombreActual}" por:`, nombreActual);
+    if (!nuevoNombre || nuevoNombre.trim() === nombreActual) return;
+
+    const fotosDeCarpeta = listaGaleria.filter(
+      f => f.slug === slugCategoria && (f.carpeta || '').trim() === nombreActual
+    );
+
+    setRefrescando(true);
+    try {
+      await Promise.all(
+        fotosDeCarpeta.map(foto =>
+          updateDoc(doc(db, "galerias", foto.id), { carpeta: nuevoNombre.trim() })
+        )
+      );
+      cargarDatos();
+    } catch (err) {
+      alert('Error al renombrar carpeta.');
+    } finally {
+      setRefrescando(false);
     }
   };
 
@@ -255,6 +370,8 @@ export default function AdminPage() {
     setFormGaleria({ 
       ...galeriaInicial,
       ...foto, 
+      carpeta: foto.carpeta || '',
+      modoLote: false,
       videoUrl: foto.videoUrl || '',
       formatoVideo: foto.formatoVideo || 'vertical'
     });
@@ -291,6 +408,14 @@ export default function AdminPage() {
   const galeriaFiltrada = filtroCategoria === 'todas' 
     ? listaGaleria 
     : listaGaleria.filter(f => f.slug === filtroCategoria);
+
+  const fotosSueltasEnFiltro = filtroCategoria !== 'todas'
+    ? galeriaFiltrada.filter(f => !f.carpeta || f.carpeta.trim() === '')
+    : [];
+
+  const carpetasEnFiltro = filtroCategoria !== 'todas'
+    ? [...new Set(galeriaFiltrada.filter(f => f.carpeta && f.carpeta.trim() !== '').map(f => f.carpeta.trim()))]
+    : [];
 
   return (
     <div className="min-h-screen df-bg py-16 px-6">
@@ -343,7 +468,6 @@ export default function AdminPage() {
                 <input type="url" value={formCliente.previewImage} onChange={e => setFormCliente({...formCliente, previewImage: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="URL Foto de Portada (acepta link de Drive)" />
                 <input type="url" value={formCliente.driveLink} onChange={e => setFormCliente({...formCliente, driveLink: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Link Principal de Google Drive (Carpeta completa)" />
 
-                {/* SECCIÓN: ÁLBUM DIGITAL INTERACTIVO */}
                 <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-2">
                   <label className="text-[11px] font-bold uppercase text-amber-600 flex items-center gap-1.5">
                     <BookOpen size={14}/> Álbum Digital Interactivo (Opcional)
@@ -355,12 +479,8 @@ export default function AdminPage() {
                     placeholder={"Pega aquí los enlaces de las mejores fotos (1 link por línea).\nAcepta links compartidos de Google Drive o enlaces directos."}
                     className="w-full df-bg border df-border rounded-xl px-3 py-2.5 text-xs focus:border-amber-600 df-text outline-none resize-y"
                   />
-                  <p className="text-[10px] df-muted leading-tight">
-                    El cliente verá estas fotos en su álbum digital con presentación musical, podrá marcar sus favoritas (❤️) y pedirte su cuadro o álbum físico.
-                  </p>
                 </div>
 
-                {/* ENLACES EXTRA */}
                 <div className="pt-1 space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[11px] font-bold uppercase tracking-wider df-muted">Videos o Carpetas Adicionales</span>
@@ -399,12 +519,14 @@ export default function AdminPage() {
               </form>
             </div>
 
-            {/* FORMULARIO GALERÍA PORTAFOLIO */}
+            {/* ========================================================== */}
+            {/* FORMULARIO GALERÍA PORTAFOLIO (CON CARPETAS Y LOTE)        */}
+            {/* ========================================================== */}
             <div className="df-card border df-border p-8 rounded-3xl shadow-xl transition-all">
               <div className="mb-6 flex justify-between items-center">
                 <div>
-                  <span className="text-xs uppercase tracking-widest font-bold text-amber-600">Portafolio Web</span>
-                  <h2 className="text-xl font-bold df-text mt-1">{editandoFotoId ? 'Editar Contenido' : 'Subir Contenido'}</h2>
+                  <span className="text-xs uppercase tracking-widest font-bold text-amber-600">Portafolio Web & Carpetas</span>
+                  <h2 className="text-xl font-bold df-text mt-1">{editandoFotoId ? 'Editar Contenido' : 'Subir Contenido o Carpeta'}</h2>
                 </div>
                 {editandoFotoId && (
                   <button onClick={() => { setEditandoFotoId(null); setFormGaleria({ ...galeriaInicial, slug: formGaleria.slug }); }} className="p-2 bg-red-500/10 text-red-500 rounded-full hover:bg-red-500/20 cursor-pointer">
@@ -412,10 +534,19 @@ export default function AdminPage() {
                   </button>
                 )}
               </div>
+
               <form onSubmit={handleSubmitGaleria} className="space-y-4">
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-amber-600 ml-1">Categoría</label>
-                  <select value={formGaleria.slug} onChange={e => setFormGaleria({...formGaleria, slug: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none">
+                  <label className="text-[10px] font-bold uppercase text-amber-600 ml-1">1. Categoría del Portafolio</label>
+                  <select 
+                    value={formGaleria.slug} 
+                    onChange={e => {
+                      setFormGaleria({...formGaleria, slug: e.target.value, carpeta: ''});
+                      setFiltroCategoria(e.target.value);
+                    }} 
+                    required 
+                    className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none"
+                  >
                     <option value="institucional">Eventos Institucionales</option>
                     <option value="parejas">Sesión de Fotos de Pareja</option>
                     <option value="publicidad">Publicidad para Negocios</option>
@@ -427,46 +558,135 @@ export default function AdminPage() {
                   </select>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-bold uppercase df-muted ml-1">Título</label>
-                    <input type="text" value={formGaleria.titulo} onChange={e => setFormGaleria({...formGaleria, titulo: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Ej. Spot Comercial" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold uppercase df-muted ml-1">Orden</label>
-                    <input type="number" value={formGaleria.orden} onChange={e => setFormGaleria({...formGaleria, orden: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none text-center" />
-                  </div>
-                </div>
+                {/* CAMPO DE CARPETA / INSTITUCIÓN */}
+                <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-2.5">
+                  <label className="text-[11px] font-bold uppercase text-amber-600 flex items-center gap-1.5">
+                    <FolderOpen size={14} /> 2. Carpeta / Institución / Asociación (Para no mezclar fotos)
+                  </label>
+                  <input 
+                    type="text" 
+                    value={formGaleria.carpeta} 
+                    onChange={e => setFormGaleria({...formGaleria, carpeta: e.target.value})} 
+                    className="w-full df-bg border df-border rounded-xl px-4 py-2.5 text-sm focus:border-amber-600 df-text outline-none" 
+                    placeholder="Ej. I.E. Almirante Grau / Asociación Jauja Pasco" 
+                  />
 
-                <div>
-                  <label className="text-[10px] font-bold uppercase df-muted ml-1 flex items-center gap-1"><ImageIcon size={12}/> Foto Portada (Obligatorio)</label>
-                  <input type="url" value={formGaleria.imagenUrl} onChange={e => setFormGaleria({...formGaleria, imagenUrl: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Enlace de la imagen o link compartido de Drive" />
-                </div>
-
-                <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-500/5 space-y-3">
-                  <div>
-                    <label className="text-[10px] font-bold uppercase text-blue-500 ml-1 flex items-center gap-1 mb-1"><Video size={12}/> Link de Video (Opcional)</label>
-                    <input type="url" value={formGaleria.videoUrl} onChange={e => setFormGaleria({...formGaleria, videoUrl: e.target.value})} className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 df-text outline-none" placeholder="Enlace de YouTube o Google Drive..." />
-                  </div>
-
-                  {formGaleria.videoUrl && (
-                    <div>
-                      <label className="text-[10px] font-bold uppercase text-blue-500 ml-1 block mb-1">Formato del Video</label>
-                      <select 
-                        value={formGaleria.formatoVideo || 'vertical'} 
-                        onChange={e => setFormGaleria({...formGaleria, formatoVideo: e.target.value})}
-                        className="w-full df-bg border df-border rounded-xl px-3 py-2 text-xs df-text outline-none focus:border-blue-500"
-                      >
-                        <option value="vertical">Vertical 9:16 (Reel / TikTok)</option>
-                        <option value="horizontal">Horizontal 16:9 (Video Completo / YouTube)</option>
-                      </select>
+                  {/* Botones rápidos de carpetas que ya existen en esta categoría */}
+                  {carpetasExistentesEnCategoria.length > 0 && (
+                    <div className="space-y-1 pt-1">
+                      <span className="text-[10px] df-muted block">Carpetas existentes en /{formGaleria.slug} (toca una para seleccionarla):</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {carpetasExistentesEnCategoria.map((nombreCarp) => (
+                          <button
+                            key={nombreCarp}
+                            type="button"
+                            onClick={() => setFormGaleria({...formGaleria, carpeta: nombreCarp})}
+                            className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
+                              formGaleria.carpeta === nombreCarp 
+                                ? 'bg-amber-600 text-white border-amber-600 font-bold' 
+                                : 'df-bg df-border df-text hover:border-amber-600'
+                            }`}
+                          >
+                            <FolderOpen size={11} /> {nombreCarp}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
 
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-bold uppercase df-muted ml-1">Título de la Foto / Evento</label>
+                    <input 
+                      type="text" 
+                      value={formGaleria.titulo} 
+                      onChange={e => setFormGaleria({...formGaleria, titulo: e.target.value})} 
+                      required={!formGaleria.modoLote} 
+                      className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" 
+                      placeholder="Ej. Ceremonia de Imposición de Casacas" 
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase df-muted ml-1">Orden Inicial</label>
+                    <input type="number" value={formGaleria.orden} onChange={e => setFormGaleria({...formGaleria, orden: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none text-center" />
+                  </div>
+                </div>
+
+                {/* SELECTOR: SUBIR 1 FOTO VS SUBIR LOTE DE FOTOS A LA CARPETA */}
+                {!editandoFotoId && (
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setFormGaleria({...formGaleria, modoLote: false})}
+                      className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        !formGaleria.modoLote ? 'bg-amber-600 text-white border-amber-600' : 'df-bg df-border df-muted'
+                      }`}
+                    >
+                      <ImageIcon size={14} /> Subir 1 Foto / Video
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormGaleria({...formGaleria, modoLote: true, videoUrl: ''})}
+                      className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        formGaleria.modoLote ? 'bg-amber-600 text-white border-amber-600' : 'df-bg df-border df-muted'
+                      }`}
+                    >
+                      <Layers size={14} /> Subir Lote de Fotos
+                    </button>
+                  </div>
+                )}
+
+                {formGaleria.modoLote && !editandoFotoId ? (
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-amber-600 ml-1 flex items-center gap-1 mb-1">
+                      <Layers size={12}/> Pega varios enlaces de fotos (1 link por línea)
+                    </label>
+                    <textarea
+                      rows="5"
+                      value={formGaleria.loteImagenesTexto}
+                      onChange={e => setFormGaleria({...formGaleria, loteImagenesTexto: e.target.value})}
+                      required
+                      placeholder={"https://drive.google.com/file/d/.../view\nhttps://drive.google.com/file/d/.../view\nhttps://drive.google.com/file/d/.../view"}
+                      className="w-full df-bg border df-border rounded-xl px-4 py-3 text-xs focus:border-amber-600 df-text outline-none resize-y"
+                    />
+                    <p className="text-[10px] df-muted mt-1">
+                      Todas estas fotos se guardarán automáticamente dentro de la carpeta <strong>{formGaleria.carpeta || '(Sin carpeta)'}</strong>.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="text-[10px] font-bold uppercase df-muted ml-1 flex items-center gap-1"><ImageIcon size={12}/> Foto Portada (Obligatorio)</label>
+                      <input type="url" value={formGaleria.imagenUrl} onChange={e => setFormGaleria({...formGaleria, imagenUrl: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Enlace de la imagen o link compartido de Drive" />
+                    </div>
+
+                    <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-500/5 space-y-3">
+                      <div>
+                        <label className="text-[10px] font-bold uppercase text-blue-500 ml-1 flex items-center gap-1 mb-1"><Video size={12}/> Link de Video (Opcional)</label>
+                        <input type="url" value={formGaleria.videoUrl} onChange={e => setFormGaleria({...formGaleria, videoUrl: e.target.value})} className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 df-text outline-none" placeholder="Enlace de YouTube o Google Drive..." />
+                      </div>
+
+                      {formGaleria.videoUrl && (
+                        <div>
+                          <label className="text-[10px] font-bold uppercase text-blue-500 ml-1 block mb-1">Formato del Video</label>
+                          <select 
+                            value={formGaleria.formatoVideo || 'vertical'} 
+                            onChange={e => setFormGaleria({...formGaleria, formatoVideo: e.target.value})}
+                            className="w-full df-bg border df-border rounded-xl px-3 py-2 text-xs df-text outline-none focus:border-blue-500"
+                          >
+                            <option value="vertical">Vertical 9:16 (Reel / TikTok)</option>
+                            <option value="horizontal">Horizontal 16:9 (Video Completo / YouTube)</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
                 <button type="submit" disabled={cargandoGaleria} className={`w-full text-white font-bold py-4 rounded-xl shadow-md flex items-center justify-center gap-2 mt-6 text-sm cursor-pointer ${editandoFotoId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
-                  {editandoFotoId ? <Edit2 size={18} /> : (formGaleria.videoUrl ? <Video size={18} /> : <ImageIcon size={18} />)} 
-                  {cargandoGaleria ? 'Procesando...' : (editandoFotoId ? 'Actualizar Contenido' : (formGaleria.videoUrl ? 'Subir Video' : 'Subir Foto'))}
+                  {editandoFotoId ? <Edit2 size={18} /> : (formGaleria.modoLote ? <Layers size={18} /> : (formGaleria.videoUrl ? <Video size={18} /> : <ImageIcon size={18} />))} 
+                  {cargandoGaleria ? 'Procesando...' : (editandoFotoId ? 'Actualizar Contenido' : (formGaleria.modoLote ? 'Subir Lote a la Carpeta' : (formGaleria.videoUrl ? 'Subir Video' : 'Subir Foto')))}
                 </button>
               </form>
             </div>
@@ -510,23 +730,8 @@ export default function AdminPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <button 
-                        type="button"
-                        onClick={() => copiarMensajeCliente(cliente)} 
-                        className="p-1.5 bg-amber-500/10 text-amber-600 rounded-md hover:bg-amber-600 hover:text-white transition-colors cursor-pointer" 
-                        title="Copiar mensaje de entrega"
-                      >
-                        <Copy size={14}/>
-                      </button>
-                      <a 
-                        href={obtenerUrlWhatsAppEntrega(cliente)} 
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-md hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer inline-flex items-center justify-center" 
-                        title="Enviar acceso por WhatsApp"
-                      >
-                        <Send size={14}/>
-                      </a>
+                      <button type="button" onClick={() => copiarMensajeCliente(cliente)} className="p-1.5 bg-amber-500/10 text-amber-600 rounded-md hover:bg-amber-600 hover:text-white transition-colors cursor-pointer" title="Copiar mensaje de entrega"><Copy size={14}/></button>
+                      <a href={obtenerUrlWhatsAppEntrega(cliente)} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-md hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer inline-flex items-center justify-center" title="Enviar acceso por WhatsApp"><Send size={14}/></a>
                       <button type="button" onClick={() => prepararEdicionCliente(cliente)} className="p-1.5 bg-blue-500/10 text-blue-500 rounded-md hover:bg-blue-500 hover:text-white transition-colors cursor-pointer" title="Editar"><Edit2 size={14}/></button>
                       <button type="button" onClick={() => eliminarCliente(cliente.id)} className="p-1.5 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-colors cursor-pointer" title="Eliminar"><Trash2 size={14}/></button>
                     </div>
@@ -535,9 +740,11 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* LISTA GALERÍA PORTAFOLIO */}
-            <div className="df-card border df-border p-6 rounded-3xl shadow-md">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            {/* ========================================================== */}
+            {/* LISTA GALERÍA PORTAFOLIO + GESTOR RÁPIDO DE CARPETAS       */}
+            {/* ========================================================== */}
+            <div className="df-card border df-border p-6 rounded-3xl shadow-md space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <h3 className="font-bold df-text">Portafolio Web ({galeriaFiltrada.length})</h3>
                 <select 
                   value={filtroCategoria} 
@@ -556,7 +763,48 @@ export default function AdminPage() {
                 </select>
               </div>
 
-              <div className="max-h-[380px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+              {/* AVISO INTELIGENTE: Agrupar fotos actuales sin carpeta en 1 clic */}
+              {filtroCategoria !== 'todas' && fotosSueltasEnFiltro.length > 0 && (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold text-amber-600">
+                      Tienes {fotosSueltasEnFiltro.length} fotos sin carpeta en /{filtroCategoria}
+                    </p>
+                    <p className="text-[11px] df-muted">
+                      Agrúpalas en 1 clic bajo el nombre de su institución para no mezclarlas con las nuevas.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => agruparFotosSueltasEnCarpeta(filtroCategoria)}
+                    className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 flex-shrink-0 cursor-pointer shadow-sm"
+                  >
+                    <FolderOpen size={14} /> Agrupar en Carpeta
+                  </button>
+                </div>
+              )}
+
+              {/* RESUMEN DE CARPETAS CREADAS EN ESTA CATEGORÍA */}
+              {carpetasEnFiltro.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {carpetasEnFiltro.map(c => (
+                    <div key={c} className="inline-flex items-center gap-1.5 text-[11px] df-bg border df-border px-2.5 py-1 rounded-lg">
+                      <FolderOpen size={12} className="text-amber-600" />
+                      <span className="font-semibold df-text">{c}</span>
+                      <button
+                        type="button"
+                        onClick={() => renombrarCarpetaCompleta(filtroCategoria, c)}
+                        className="text-blue-500 hover:underline ml-1 cursor-pointer"
+                        title="Renombrar esta carpeta"
+                      >
+                        <Edit2 size={11} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="max-h-[420px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                 {galeriaFiltrada.length === 0 && <p className="text-xs df-muted">No hay contenido en esta categoría.</p>}
                 {galeriaFiltrada.map(foto => (
                   <div key={foto.id} className="flex justify-between items-center p-3 df-bg rounded-xl border df-border group hover:border-amber-500/50 transition-colors">
@@ -567,7 +815,17 @@ export default function AdminPage() {
                       </div>
                       <div className="flex-1 pr-2 min-w-0">
                         <p className="text-sm font-bold df-text truncate">{foto.titulo || 'Sin título'}</p>
-                        <p className="text-[10px] font-bold text-amber-600 tracking-wider">/{foto.slug} <span className="df-muted font-normal">(Orden: {foto.orden})</span></p>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                          <span className="text-[10px] font-bold text-amber-600 tracking-wider">/{foto.slug}</span>
+                          {foto.carpeta ? (
+                            <span className="text-[10px] bg-amber-600/15 text-amber-600 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+                              📁 {foto.carpeta}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] df-muted italic">(Sin carpeta)</span>
+                          )}
+                          <span className="text-[10px] df-muted">(Orden: {foto.orden})</span>
+                        </div>
                       </div>
                     </div>
                     <div className="flex gap-2">
