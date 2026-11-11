@@ -7,7 +7,7 @@ import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebas
 import { 
   ShieldCheck, PlusCircle, ArrowLeft, Image as ImageIcon, 
   Trash2, Edit2, X, RefreshCw, Video, LogOut, Copy, Send, 
-  Search, Plus, BookOpen, Star, FolderOpen, Layers
+  Search, Plus, BookOpen, Star, FolderOpen, Layers, Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -55,19 +55,22 @@ export default function AdminPage() {
   };
   const [formCliente, setFormCliente] = useState(clienteInicial);
   const [cargandoCliente, setCargandoCliente] = useState(false);
+  const [extrayendoAlbumCliente, setExtrayendoAlbumCliente] = useState(false);
   const [listaClientes, setListaClientes] = useState([]);
   const [editandoClienteId, setEditandoClienteId] = useState(null);
   const [busquedaCliente, setBusquedaCliente] = useState('');
 
-  // ESTADOS GALERÍA PORTAFOLIO (Ahora soporta Carpeta / Institución y Subida por Lote)
+  // ESTADOS GALERÍA PORTAFOLIO
+  // modoSubida: 'carpetaDrive' (1 solo link de carpeta) | 'individual' (1 foto/video) | 'lote' (varios links)
   const galeriaInicial = { 
     slug: 'institucional', 
     carpeta: '', 
     titulo: '', 
     orden: 1, 
+    modoSubida: 'carpetaDrive',
+    carpetaDriveUrl: '',
     imagenUrl: '', 
     loteImagenesTexto: '',
-    modoLote: false,
     videoUrl: '', 
     formatoVideo: 'vertical' 
   };
@@ -108,7 +111,6 @@ export default function AdminPage() {
     }
   };
 
-  // Detectar carpetas ya existentes en la categoría seleccionada para autocompletar
   const carpetasExistentesEnCategoria = useMemo(() => {
     const nombres = listaGaleria
       .filter(f => f.slug === formGaleria.slug && f.carpeta && f.carpeta.trim() !== '')
@@ -142,6 +144,54 @@ export default function AdminPage() {
     await signOut(auth);
   };
 
+  // ==========================================================
+  // FUNCIÓN MÁGICA: EXTRAER FOTOS DESDE 1 LINK DE CARPETA DRIVE
+  // ==========================================================
+  const extraerArchivosDeCarpetaDrive = async (folderUrl) => {
+    const res = await fetch('/api/drive-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderUrl })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || 'No se pudo leer la carpeta de Drive.');
+    }
+    return data.archivos;
+  };
+
+  // Extraer fotos de la carpeta del cliente hacia su Álbum Digital en 1 clic
+  const importarCarpetaAlAlbumCliente = async () => {
+    const urlAExtraer = formCliente.driveLink.trim();
+    if (!urlAExtraer || !urlAExtraer.includes('/folders/')) {
+      alert('Primero pega el enlace de una carpeta de Google Drive en el campo "Link Principal de Google Drive".');
+      return;
+    }
+
+    setExtrayendoAlbumCliente(true);
+    try {
+      const archivos = await extraerArchivosDeCarpetaDrive(urlAExtraer);
+      const soloFotos = archivos.filter(a => !a.esVideo).map(a => a.imagenUrl);
+      if (soloFotos.length === 0) {
+        alert('No se encontraron fotografías en esa carpeta.');
+        return;
+      }
+
+      setFormCliente(prev => ({
+        ...prev,
+        // Si aún no puso foto de portada, usa automáticamente la primera foto de la carpeta
+        previewImage: prev.previewImage || soloFotos[0],
+        albumFotosTexto: soloFotos.join('\n')
+      }));
+
+      alert(`¡Genial! Se extrajeron ${soloFotos.length} fotos automáticamente de la carpeta de Drive para el Álbum Digital.`);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setExtrayendoAlbumCliente(false);
+    }
+  };
+
   const agregarEnlaceExtra = () => {
     setFormCliente(prev => ({
       ...prev,
@@ -164,10 +214,20 @@ export default function AdminPage() {
     e.preventDefault();
     setCargandoCliente(true);
     try {
-      const listaFotosAlbum = (formCliente.albumFotosTexto || '')
+      let textoAlbum = formCliente.albumFotosTexto || '';
+
+      // Si el usuario pegó un link de carpeta de Drive dentro de la caja del álbum, lo expandimos automáticamente
+      if (textoAlbum.trim().includes('drive.google.com/drive/folders/') && textoAlbum.trim().split('\n').length === 1) {
+        const archivos = await extraerArchivosDeCarpetaDrive(textoAlbum.trim());
+        textoAlbum = archivos.filter(a => !a.esVideo).map(a => a.imagenUrl).join('\n');
+      }
+
+      const listaFotosAlbum = textoAlbum
         .split('\n')
         .map(linea => normalizarImagenUrl(linea))
         .filter(url => url !== '');
+
+      const portadaFinal = normalizarImagenUrl(formCliente.previewImage) || listaFotosAlbum[0] || '/institucional.jpg';
 
       const datosLimpios = {
         nombreCliente: formCliente.nombreCliente.trim(),
@@ -175,7 +235,7 @@ export default function AdminPage() {
         telefonoCliente: (formCliente.telefonoCliente || '').trim(),
         tipo: formCliente.tipo.trim(),
         fecha: formCliente.fecha.trim(),
-        previewImage: normalizarImagenUrl(formCliente.previewImage),
+        previewImage: portadaFinal,
         driveLink: formCliente.driveLink.trim(),
         enlacesExtra: (formCliente.enlacesExtra || []).filter(item => item.url?.trim() !== ''),
         albumFotos: listaFotosAlbum
@@ -192,7 +252,7 @@ export default function AdminPage() {
       setFormCliente(clienteInicial);
       cargarDatos();
     } catch (error) {
-      alert('Hubo un error al guardar el cliente.');
+      alert(error.message || 'Hubo un error al guardar el cliente.');
     } finally {
       setCargandoCliente(false);
     }
@@ -231,17 +291,44 @@ export default function AdminPage() {
   };
 
   // ==========================================================
-  // GUARDAR EN PORTAFOLIO (INDIVIDUAL O POR LOTE A UNA CARPETA)
+  // GUARDAR EN PORTAFOLIO (1 LINK DE CARPETA / LOTE / INDIVIDUAL)
   // ==========================================================
   const handleSubmitGaleria = async (e) => {
     e.preventDefault();
     setCargandoGaleria(true);
     try {
       const carpetaLimpia = (formGaleria.carpeta || '').trim();
-      const cleanVideoUrl = formGaleria.videoUrl?.trim() || "";
+      const ordenBase = Number(formGaleria.orden) || 1;
 
-      // Si el usuario activó Subida por Lote (varias fotos de una institución a la vez)
-      if (!editandoFotoId && formGaleria.modoLote) {
+      // MODO 1: SUBIR CON UN SOLO LINK DE CARPETA DE GOOGLE DRIVE
+      if (!editandoFotoId && formGaleria.modoSubida === 'carpetaDrive') {
+        if (!carpetaLimpia) {
+          alert('Por favor escribe el nombre de la Institución / Asociación en el campo Carpeta.');
+          setCargandoGaleria(false);
+          return;
+        }
+
+        const archivos = await extraerArchivosDeCarpetaDrive(formGaleria.carpetaDriveUrl);
+        await Promise.all(
+          archivos.map((archivo, idx) =>
+            addDoc(collection(db, "galerias"), {
+              slug: formGaleria.slug,
+              carpeta: carpetaLimpia,
+              titulo: formGaleria.titulo.trim() 
+                ? `${formGaleria.titulo.trim()} #${idx + 1}` 
+                : `${carpetaLimpia} #${idx + 1}`,
+              orden: ordenBase + idx,
+              imagenUrl: archivo.imagenUrl,
+              videoUrl: archivo.videoUrl || '',
+              formatoVideo: 'vertical',
+              createdAt: new Date()
+            })
+          )
+        );
+        alert(`¡Espectacular! Se importaron automáticamente ${archivos.length} archivos desde la carpeta de Drive hacia "${carpetaLimpia}".`);
+      } 
+      // MODO 2: SUBIR LOTE DE ENLACES SUELTOS
+      else if (!editandoFotoId && formGaleria.modoSubida === 'lote') {
         const urls = (formGaleria.loteImagenesTexto || '')
           .split('\n')
           .map(linea => normalizarImagenUrl(linea))
@@ -253,7 +340,6 @@ export default function AdminPage() {
           return;
         }
 
-        const ordenBase = Number(formGaleria.orden) || 1;
         await Promise.all(
           urls.map((imgUrl, idx) =>
             addDoc(collection(db, "galerias"), {
@@ -269,14 +355,16 @@ export default function AdminPage() {
           )
         );
         alert(`¡${urls.length} fotografías agregadas a la carpeta "${carpetaLimpia || formGaleria.slug}"!`);
-      } else {
-        // Subida o Edición Individual
+      } 
+      // MODO 3: SUBIR O EDITAR 1 FOTO / VIDEO INDIVIDUAL
+      else {
+        const cleanVideoUrl = formGaleria.videoUrl?.trim() || "";
         const dataToSave = { 
           slug: formGaleria.slug,
           carpeta: carpetaLimpia,
-          titulo: formGaleria.titulo.trim(),
+          titulo: formGaleria.titulo.trim() || carpetaLimpia || 'Fotografía',
           imagenUrl: normalizarImagenUrl(formGaleria.imagenUrl),
-          orden: Number(formGaleria.orden) || 1,
+          orden: ordenBase,
           videoUrl: cleanVideoUrl,
           formatoVideo: formGaleria.formatoVideo || 'vertical'
         };
@@ -294,18 +382,19 @@ export default function AdminPage() {
       setFormGaleria({ 
         ...galeriaInicial, 
         slug: formGaleria.slug, 
-        carpeta: carpetaLimpia // Mantiene el nombre de carpeta activo por si quiere seguir subiendo a la misma
+        carpeta: carpetaLimpia,
+        modoSubida: formGaleria.modoSubida
       }); 
       cargarDatos();
     } catch (error) {
       console.error(error);
-      alert('Hubo un error al subir el archivo.');
+      alert(error.message || 'Hubo un error al subir el archivo.');
     } finally {
       setCargandoGaleria(false);
     }
   };
 
-  // HERRAMIENTA 1-CLIC: Agrupar fotos antiguas que no tenían carpeta en una carpeta nueva
+  // Agrupar fotos sueltas en 1 clic
   const agruparFotosSueltasEnCarpeta = async (slugCategoria) => {
     const fotosSueltas = listaGaleria.filter(
       f => f.slug === slugCategoria && (!f.carpeta || f.carpeta.trim() === '')
@@ -334,7 +423,6 @@ export default function AdminPage() {
     }
   };
 
-  // HERRAMIENTA 1-CLIC: Renombrar una carpeta completa
   const renombrarCarpetaCompleta = async (slugCategoria, nombreActual) => {
     const nuevoNombre = window.prompt(`Cambiar el nombre de la carpeta "${nombreActual}" por:`, nombreActual);
     if (!nuevoNombre || nuevoNombre.trim() === nombreActual) return;
@@ -358,6 +446,24 @@ export default function AdminPage() {
     }
   };
 
+  // Borrar una carpeta completa del portafolio si te equivocaste
+  const eliminarCarpetaCompleta = async (slugCategoria, nombreCarpeta) => {
+    const fotosDeCarpeta = listaGaleria.filter(
+      f => f.slug === slugCategoria && (f.carpeta || '').trim() === nombreCarpeta
+    );
+    if (!window.confirm(`¿Seguro que deseas eliminar toda la carpeta "${nombreCarpeta}" (${fotosDeCarpeta.length} archivos)?`)) return;
+
+    setRefrescando(true);
+    try {
+      await Promise.all(fotosDeCarpeta.map(foto => deleteDoc(doc(db, "galerias", foto.id))));
+      cargarDatos();
+    } catch (err) {
+      alert('Error al eliminar la carpeta.');
+    } finally {
+      setRefrescando(false);
+    }
+  };
+
   const eliminarFoto = async (id) => {
     if (window.confirm("¿Seguro de borrar este elemento de la web?")) {
       await deleteDoc(doc(db, "galerias", id));
@@ -371,7 +477,7 @@ export default function AdminPage() {
       ...galeriaInicial,
       ...foto, 
       carpeta: foto.carpeta || '',
-      modoLote: false,
+      modoSubida: 'individual',
       videoUrl: foto.videoUrl || '',
       formatoVideo: foto.formatoVideo || 'vertical'
     });
@@ -442,7 +548,7 @@ export default function AdminPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="space-y-8">
             
-            {/* FORMULARIO CLIENTES + ÁLBUM DIGITAL */}
+            {/* FORMULARIO CLIENTES + EXTRACCIÓN 1-CLIC DE CARPETA DRIVE */}
             <div className="df-card border df-border p-8 rounded-3xl shadow-xl transition-all">
               <div className="mb-6 flex justify-between items-center">
                 <div>
@@ -465,19 +571,30 @@ export default function AdminPage() {
                   <input type="text" value={formCliente.tipo} onChange={e => setFormCliente({...formCliente, tipo: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Tipo de Evento" />
                   <input type="text" value={formCliente.fecha} onChange={e => setFormCliente({...formCliente, fecha: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Fecha (Ej. 15 Octubre)" />
                 </div>
-                <input type="url" value={formCliente.previewImage} onChange={e => setFormCliente({...formCliente, previewImage: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="URL Foto de Portada (acepta link de Drive)" />
-                <input type="url" value={formCliente.driveLink} onChange={e => setFormCliente({...formCliente, driveLink: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Link Principal de Google Drive (Carpeta completa)" />
+                <input type="url" value={formCliente.driveLink} onChange={e => setFormCliente({...formCliente, driveLink: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="1. Pega aquí el Link de la Carpeta de Google Drive" />
+                <input type="url" value={formCliente.previewImage} onChange={e => setFormCliente({...formCliente, previewImage: e.target.value})} className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="URL Foto de Portada (Opcional: si lo dejas vacío usa la 1ra foto)" />
 
-                <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-2">
-                  <label className="text-[11px] font-bold uppercase text-amber-600 flex items-center gap-1.5">
-                    <BookOpen size={14}/> Álbum Digital Interactivo (Opcional)
-                  </label>
+                <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="text-[11px] font-bold uppercase text-amber-600 flex items-center gap-1.5">
+                      <BookOpen size={14}/> Álbum Digital Interactivo
+                    </label>
+                    <button
+                      type="button"
+                      onClick={importarCarpetaAlAlbumCliente}
+                      disabled={extrayendoAlbumCliente}
+                      className="bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                    >
+                      <Sparkles size={12} />
+                      {extrayendoAlbumCliente ? 'Extrayendo fotos...' : 'Extraer fotos del Link de Drive (1 clic)'}
+                    </button>
+                  </div>
                   <textarea 
-                    rows="4"
+                    rows="3"
                     value={formCliente.albumFotosTexto}
                     onChange={e => setFormCliente({...formCliente, albumFotosTexto: e.target.value})}
-                    placeholder={"Pega aquí los enlaces de las mejores fotos (1 link por línea).\nAcepta links compartidos de Google Drive o enlaces directos."}
-                    className="w-full df-bg border df-border rounded-xl px-3 py-2.5 text-xs focus:border-amber-600 df-text outline-none resize-y"
+                    placeholder={"Toca el botón de arriba para extraer todas las fotos de tu carpeta de Drive automáticamente, o pega aquí un link de carpeta / fotos."}
+                    className="w-full df-bg border df-border rounded-xl px-3 py-2 text-xs focus:border-amber-600 df-text outline-none resize-y"
                   />
                 </div>
 
@@ -520,13 +637,13 @@ export default function AdminPage() {
             </div>
 
             {/* ========================================================== */}
-            {/* FORMULARIO GALERÍA PORTAFOLIO (CON CARPETAS Y LOTE)        */}
+            {/* FORMULARIO PORTAFOLIO (CON SUBIDA DE 1 LINK DE CARPETA)    */}
             {/* ========================================================== */}
             <div className="df-card border df-border p-8 rounded-3xl shadow-xl transition-all">
               <div className="mb-6 flex justify-between items-center">
                 <div>
                   <span className="text-xs uppercase tracking-widest font-bold text-amber-600">Portafolio Web & Carpetas</span>
-                  <h2 className="text-xl font-bold df-text mt-1">{editandoFotoId ? 'Editar Contenido' : 'Subir Contenido o Carpeta'}</h2>
+                  <h2 className="text-xl font-bold df-text mt-1">{editandoFotoId ? 'Editar Contenido' : 'Subir al Portafolio'}</h2>
                 </div>
                 {editandoFotoId && (
                   <button onClick={() => { setEditandoFotoId(null); setFormGaleria({ ...galeriaInicial, slug: formGaleria.slug }); }} className="p-2 bg-red-500/10 text-red-500 rounded-full hover:bg-red-500/20 cursor-pointer">
@@ -561,7 +678,7 @@ export default function AdminPage() {
                 {/* CAMPO DE CARPETA / INSTITUCIÓN */}
                 <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-2.5">
                   <label className="text-[11px] font-bold uppercase text-amber-600 flex items-center gap-1.5">
-                    <FolderOpen size={14} /> 2. Carpeta / Institución / Asociación (Para no mezclar fotos)
+                    <FolderOpen size={14} /> 2. Nombre de la Carpeta / Institución
                   </label>
                   <input 
                     type="text" 
@@ -571,10 +688,9 @@ export default function AdminPage() {
                     placeholder="Ej. I.E. Almirante Grau / Asociación Jauja Pasco" 
                   />
 
-                  {/* Botones rápidos de carpetas que ya existen en esta categoría */}
                   {carpetasExistentesEnCategoria.length > 0 && (
                     <div className="space-y-1 pt-1">
-                      <span className="text-[10px] df-muted block">Carpetas existentes en /{formGaleria.slug} (toca una para seleccionarla):</span>
+                      <span className="text-[10px] df-muted block">Carpetas existentes en /{formGaleria.slug}:</span>
                       <div className="flex flex-wrap gap-1.5">
                         {carpetasExistentesEnCategoria.map((nombreCarp) => (
                           <button
@@ -595,66 +711,78 @@ export default function AdminPage() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-bold uppercase df-muted ml-1">Título de la Foto / Evento</label>
-                    <input 
-                      type="text" 
-                      value={formGaleria.titulo} 
-                      onChange={e => setFormGaleria({...formGaleria, titulo: e.target.value})} 
-                      required={!formGaleria.modoLote} 
-                      className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" 
-                      placeholder="Ej. Ceremonia de Imposición de Casacas" 
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold uppercase df-muted ml-1">Orden Inicial</label>
-                    <input type="number" value={formGaleria.orden} onChange={e => setFormGaleria({...formGaleria, orden: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none text-center" />
-                  </div>
-                </div>
-
-                {/* SELECTOR: SUBIR 1 FOTO VS SUBIR LOTE DE FOTOS A LA CARPETA */}
+                {/* SELECTOR DE MODO: 1 LINK DE CARPETA DRIVE VS 1 FOTO/VIDEO VS LOTE */}
                 {!editandoFotoId && (
-                  <div className="flex gap-2 pt-1">
+                  <div className="grid grid-cols-3 gap-2 pt-1">
                     <button
                       type="button"
-                      onClick={() => setFormGaleria({...formGaleria, modoLote: false})}
-                      className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                        !formGaleria.modoLote ? 'bg-amber-600 text-white border-amber-600' : 'df-bg df-border df-muted'
+                      onClick={() => setFormGaleria({...formGaleria, modoSubida: 'carpetaDrive', videoUrl: ''})}
+                      className={`py-2.5 px-2 rounded-xl text-[11px] font-bold border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        formGaleria.modoSubida === 'carpetaDrive' ? 'bg-amber-600 text-white border-amber-600 shadow-sm' : 'df-bg df-border df-muted'
                       }`}
                     >
-                      <ImageIcon size={14} /> Subir 1 Foto / Video
+                      <FolderOpen size={13} /> 1 Link Carpeta
                     </button>
                     <button
                       type="button"
-                      onClick={() => setFormGaleria({...formGaleria, modoLote: true, videoUrl: ''})}
-                      className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                        formGaleria.modoLote ? 'bg-amber-600 text-white border-amber-600' : 'df-bg df-border df-muted'
+                      onClick={() => setFormGaleria({...formGaleria, modoSubida: 'individual'})}
+                      className={`py-2.5 px-2 rounded-xl text-[11px] font-bold border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        formGaleria.modoSubida === 'individual' ? 'bg-amber-600 text-white border-amber-600 shadow-sm' : 'df-bg df-border df-muted'
                       }`}
                     >
-                      <Layers size={14} /> Subir Lote de Fotos
+                      <ImageIcon size={13} /> 1 Foto / Video
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormGaleria({...formGaleria, modoSubida: 'lote', videoUrl: ''})}
+                      className={`py-2.5 px-2 rounded-xl text-[11px] font-bold border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        formGaleria.modoSubida === 'lote' ? 'bg-amber-600 text-white border-amber-600 shadow-sm' : 'df-bg df-border df-muted'
+                      }`}
+                    >
+                      <Layers size={13} /> Varios Links
                     </button>
                   </div>
                 )}
 
-                {formGaleria.modoLote && !editandoFotoId ? (
+                {/* MODO A: SUBIR CON UN SOLO LINK DE CARPETA DE DRIVE */}
+                {!editandoFotoId && formGaleria.modoSubida === 'carpetaDrive' && (
+                  <div className="p-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 space-y-3">
+                    <label className="text-[11px] font-bold uppercase text-emerald-500 flex items-center gap-1.5">
+                      <Sparkles size={14} /> 3. Pega el Link de la Carpeta de Google Drive
+                    </label>
+                    <input
+                      type="url"
+                      value={formGaleria.carpetaDriveUrl}
+                      onChange={e => setFormGaleria({...formGaleria, carpetaDriveUrl: e.target.value})}
+                      required
+                      placeholder="https://drive.google.com/drive/folders/1ABCdef..."
+                      className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-emerald-500 df-text outline-none"
+                    />
+                    <p className="text-[10px] df-muted leading-relaxed">
+                      ✨ <strong>Automático:</strong> El sistema entrará a tu carpeta de Google Drive, extraerá todas las fotos que estén adentro y las publicará en la carpeta <strong>{formGaleria.carpeta || '(escribe el nombre arriba)'}</strong>. <em>(Asegúrate de que la carpeta de Drive esté en "Cualquier persona con el enlace").</em>
+                    </p>
+                  </div>
+                )}
+
+                {/* MODO B: VARIOS LINKS POR LOTE */}
+                {!editandoFotoId && formGaleria.modoSubida === 'lote' && (
                   <div>
                     <label className="text-[10px] font-bold uppercase text-amber-600 ml-1 flex items-center gap-1 mb-1">
                       <Layers size={12}/> Pega varios enlaces de fotos (1 link por línea)
                     </label>
                     <textarea
-                      rows="5"
+                      rows="4"
                       value={formGaleria.loteImagenesTexto}
                       onChange={e => setFormGaleria({...formGaleria, loteImagenesTexto: e.target.value})}
                       required
-                      placeholder={"https://drive.google.com/file/d/.../view\nhttps://drive.google.com/file/d/.../view\nhttps://drive.google.com/file/d/.../view"}
+                      placeholder={"https://drive.google.com/file/d/.../view\nhttps://drive.google.com/file/d/.../view"}
                       className="w-full df-bg border df-border rounded-xl px-4 py-3 text-xs focus:border-amber-600 df-text outline-none resize-y"
                     />
-                    <p className="text-[10px] df-muted mt-1">
-                      Todas estas fotos se guardarán automáticamente dentro de la carpeta <strong>{formGaleria.carpeta || '(Sin carpeta)'}</strong>.
-                    </p>
                   </div>
-                ) : (
+                )}
+
+                {/* MODO C: 1 FOTO O VIDEO INDIVIDUAL */}
+                {(editandoFotoId || formGaleria.modoSubida === 'individual') && (
                   <>
                     <div>
                       <label className="text-[10px] font-bold uppercase df-muted ml-1 flex items-center gap-1"><ImageIcon size={12}/> Foto Portada (Obligatorio)</label>
@@ -684,9 +812,32 @@ export default function AdminPage() {
                   </>
                 )}
 
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-bold uppercase df-muted ml-1">Título (Opcional en carpeta)</label>
+                    <input 
+                      type="text" 
+                      value={formGaleria.titulo} 
+                      onChange={e => setFormGaleria({...formGaleria, titulo: e.target.value})} 
+                      className="w-full df-bg border df-border rounded-xl px-4 py-2.5 text-xs focus:border-amber-600 df-text outline-none" 
+                      placeholder="Si lo dejas vacío usará el nombre de la carpeta" 
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase df-muted ml-1">Orden Inicial</label>
+                    <input type="number" value={formGaleria.orden} onChange={e => setFormGaleria({...formGaleria, orden: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-2.5 text-xs focus:border-amber-600 df-text outline-none text-center" />
+                  </div>
+                </div>
+
                 <button type="submit" disabled={cargandoGaleria} className={`w-full text-white font-bold py-4 rounded-xl shadow-md flex items-center justify-center gap-2 mt-6 text-sm cursor-pointer ${editandoFotoId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
-                  {editandoFotoId ? <Edit2 size={18} /> : (formGaleria.modoLote ? <Layers size={18} /> : (formGaleria.videoUrl ? <Video size={18} /> : <ImageIcon size={18} />))} 
-                  {cargandoGaleria ? 'Procesando...' : (editandoFotoId ? 'Actualizar Contenido' : (formGaleria.modoLote ? 'Subir Lote a la Carpeta' : (formGaleria.videoUrl ? 'Subir Video' : 'Subir Foto')))}
+                  {editandoFotoId ? <Edit2 size={18} /> : <FolderOpen size={18} />} 
+                  {cargandoGaleria 
+                    ? 'Extrayendo y subiendo fotos...' 
+                    : editandoFotoId 
+                      ? 'Actualizar Contenido' 
+                      : formGaleria.modoSubida === 'carpetaDrive' 
+                        ? 'Importar Carpeta Completa de Drive' 
+                        : 'Subir al Portafolio'}
                 </button>
               </form>
             </div>
@@ -740,9 +891,7 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* ========================================================== */}
-            {/* LISTA GALERÍA PORTAFOLIO + GESTOR RÁPIDO DE CARPETAS       */}
-            {/* ========================================================== */}
+            {/* LISTA GALERÍA PORTAFOLIO + GESTOR RÁPIDO DE CARPETAS */}
             <div className="df-card border df-border p-6 rounded-3xl shadow-md space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <h3 className="font-bold df-text">Portafolio Web ({galeriaFiltrada.length})</h3>
@@ -763,7 +912,6 @@ export default function AdminPage() {
                 </select>
               </div>
 
-              {/* AVISO INTELIGENTE: Agrupar fotos actuales sin carpeta en 1 clic */}
               {filtroCategoria !== 'todas' && fotosSueltasEnFiltro.length > 0 && (
                 <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <div>
@@ -784,7 +932,6 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {/* RESUMEN DE CARPETAS CREADAS EN ESTA CATEGORÍA */}
               {carpetasEnFiltro.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {carpetasEnFiltro.map(c => (
@@ -798,6 +945,14 @@ export default function AdminPage() {
                         title="Renombrar esta carpeta"
                       >
                         <Edit2 size={11} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => eliminarCarpetaCompleta(filtroCategoria, c)}
+                        className="text-red-500 hover:underline cursor-pointer"
+                        title="Eliminar carpeta completa"
+                      >
+                        <Trash2 size={11} />
                       </button>
                     </div>
                   ))}
