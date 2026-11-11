@@ -102,7 +102,6 @@ const formatearImagenUrl = (url) => {
   return url;
 };
 
-// Elimina el texto redundante cuando el título de la foto repite el nombre de la carpeta
 const obtenerTituloLimpio = (foto) => {
   if (!foto) return '';
   const titulo = (foto.titulo || '').trim();
@@ -122,12 +121,10 @@ const obtenerTituloLimpio = (foto) => {
   return titulo;
 };
 
-// Detecta si un video debe abrirse en Horizontal (16:9) o Vertical (9:16) por defecto
 const detectarFormatoInicialVideo = (item) => {
   if (!item?.videoUrl) return 'vertical';
   if (item.formatoVideo === 'horizontal') return 'horizontal';
   if (item.formatoVideo === 'vertical') return 'vertical';
-  // Si es link normal de YouTube (no Shorts), por defecto es horizontal 16:9
   if (
     (item.videoUrl.includes('youtube.com/watch?v=') || item.videoUrl.includes('youtu.be/')) &&
     !item.videoUrl.includes('/shorts/')
@@ -154,7 +151,7 @@ export default function SlugClient({ slug }) {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [trabajoSeleccionado, setTrabajoSeleccionado] = useState(null);
   const [indiceActual, setIndiceActual] = useState(0);
-  const [formatoModal, setFormatoModal] = useState('vertical'); // 'vertical' (9:16) | 'horizontal' (16:9)
+  const [formatoModal, setFormatoModal] = useState('vertical');
   const [touchStartX, setTouchStartX] = useState(null);
   
   const [showTopBtn, setShowTopBtn] = useState(false);
@@ -369,7 +366,6 @@ export default function SlugClient({ slug }) {
       </header>
 
       <section className="py-8 px-6 md:px-12 max-w-6xl mx-auto">
-        {/* ENCABEZADO DINÁMICO DE SECCIÓN */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
             <h2 className="text-2xl font-bold df-text flex items-center gap-2.5">
@@ -573,51 +569,15 @@ export default function SlugClient({ slug }) {
       </section>
 
       {/* ========================================================== */}
-      {/* MODAL DE VIDEO (VERTICAL 9:16 Y HORIZONTAL 16:9 PERFECTO)  */}
+      {/* MODAL DE CINE CENTRADO (ESCALADO 3X DESKTOP HD SIN HUECOS) */}
       {/* ========================================================== */}
       {modalAbierto && (
         <div 
           onClick={cerrarModal}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
-          className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-between md:justify-center p-2.5 sm:p-6 animate-fade-in overflow-y-auto"
+          className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-3 sm:p-6 animate-fade-in overflow-y-auto"
         >
-          {/* Barra Superior del Visor: Contador + Selector 16:9 / 9:16 + Cerrar */}
-          <div 
-            onClick={(e) => e.stopPropagation()} 
-            className="w-full max-w-4xl flex items-center justify-between z-50 pt-1 pb-2 md:pb-0 md:mb-3"
-          >
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                <span className="text-[11px] font-bold text-white/90 tracking-wide">
-                  {indiceActual + 1} de {itemsVisibles.length}
-                </span>
-              </div>
-
-              {/* Botón para cambiar entre Formato Horizontal (16:9) y Vertical (9:16) en cualquier momento */}
-              {trabajoSeleccionado?.videoUrl && (
-                <button
-                  type="button"
-                  onClick={() => setFormatoModal(esVideoHorizontal ? 'vertical' : 'horizontal')}
-                  className="bg-white/10 hover:bg-amber-600 text-white border border-white/15 px-3 py-1.5 rounded-full text-[11px] font-bold flex items-center gap-1.5 backdrop-blur-md transition-all cursor-pointer"
-                  title="Cambiar orientación del reproductor"
-                >
-                  {esVideoHorizontal ? <PhoneIcon size={13} /> : <Monitor size={13} />}
-                  <span>{esVideoHorizontal ? 'Cambiar a 9:16 Vertical' : 'Cambiar a 16:9 Horizontal'}</span>
-                </button>
-              )}
-            </div>
-
-            <button 
-              onClick={cerrarModal} 
-              className="text-white/80 hover:text-white p-2.5 bg-white/10 hover:bg-white/20 border border-white/10 rounded-full transition-colors cursor-pointer"
-              aria-label="Cerrar visor"
-            >
-              <X size={20} strokeWidth={2} />
-            </button>
-          </div>
-
           {/* Flechas Laterales en PC */}
           {itemsVisibles.length > 1 && (
             <>
@@ -636,32 +596,71 @@ export default function SlugClient({ slug }) {
             </>
           )}
 
-          {/* Contenedor Central Multimedia */}
+          {/* Bloque Central Compacto (Sin espacios vacíos arriba ni abajo) */}
           <div 
             onClick={(e) => e.stopPropagation()} 
-            className="relative w-full max-w-4xl mx-auto flex flex-col items-center justify-center my-auto"
+            className={`relative w-full ${
+              trabajoSeleccionado?.videoUrl
+                ? esVideoHorizontal
+                  ? 'max-w-[95vw] md:max-w-3xl'
+                  : 'max-w-[320px] md:max-w-[355px]'
+                : 'max-w-4xl'
+            } mx-auto flex flex-col items-center justify-center`}
           >
+            {/* Barra Superior pegada justo encima del reproductor */}
+            <div className="w-full flex items-center justify-between gap-2 mb-3 z-50">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 bg-zinc-900/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/10">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="text-[11px] font-bold text-white/90 tracking-wide">
+                    {indiceActual + 1} de {itemsVisibles.length}
+                  </span>
+                </div>
+
+                {trabajoSeleccionado?.videoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setFormatoModal(esVideoHorizontal ? 'vertical' : 'horizontal')}
+                    className="bg-zinc-900/90 hover:bg-amber-600 text-white/90 hover:text-white border border-white/15 px-3 py-1.5 rounded-full text-[11px] font-bold flex items-center gap-1.5 backdrop-blur-md transition-all cursor-pointer"
+                    title="Alternar formato 16:9 / 9:16"
+                  >
+                    {esVideoHorizontal ? <PhoneIcon size={12} /> : <Monitor size={12} />}
+                    <span>{esVideoHorizontal ? '9:16 Vertical' : '16:9 Horizontal'}</span>
+                  </button>
+                )}
+              </div>
+
+              <button 
+                onClick={cerrarModal} 
+                className="text-white/80 hover:text-white p-2 bg-zinc-900/90 hover:bg-white/20 border border-white/15 rounded-full transition-colors cursor-pointer"
+                aria-label="Cerrar visor"
+              >
+                <X size={19} strokeWidth={2} />
+              </button>
+            </div>
+
+            {/* Marco del Video o Fotografía */}
             <div className="w-full flex justify-center items-center">
               {trabajoSeleccionado?.videoUrl ? (
                 <div 
                   className={
                     esVideoHorizontal 
-                      ? "w-[94vw] md:w-full max-w-3xl max-h-[66vh] aspect-video rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.95)] ring-1 ring-white/20 bg-black relative"
-                      : "w-[80vw] max-w-[310px] md:max-w-[350px] max-h-[68vh] aspect-[9/16] rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.95)] ring-1 ring-white/20 bg-black relative"
+                      ? "w-full aspect-video rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.95)] ring-1 ring-white/20 bg-black relative"
+                      : "w-full aspect-[9/16] max-h-[66vh] rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.95)] ring-1 ring-white/20 bg-black relative"
                   }
                 >
-                  {/* Escalado Virtual 2x -> 0.5x tanto en Horizontal (16:9) como Vertical (9:16) */}
+                  {/* Escalado Virtual 3x (300% -> 0.3333x): Supera los 1000px virtuales en móvil y fuerza a Google Drive a usar su barra fina de PC (1 sola fila abajo y sin barra blanca arriba) */}
                   <div className="absolute inset-0 w-full h-full overflow-hidden bg-black">
                     <iframe 
                       key={`${trabajoSeleccionado.id || indiceActual}-${formatoModal}`}
                       src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
                       style={{
                         position: 'absolute',
-                        top: '-2%',
-                        left: '-2%',
-                        width: '204%',
-                        height: '204%',
-                        transform: 'scale(0.5)',
+                        top: '0%',
+                        left: '0%',
+                        width: '300%',
+                        height: '300%',
+                        transform: 'scale(0.333333)',
                         transformOrigin: 'top left',
                       }}
                       className="border-0 bg-black"
@@ -670,8 +669,8 @@ export default function SlugClient({ slug }) {
                     />
                   </div>
 
-                  {/* Insignia superior derecha que cubre el botón gris [↗] de Google Drive */}
-                  <div className="absolute top-2.5 right-2.5 z-30 bg-black/90 backdrop-blur-md border border-white/15 px-3 py-1.5 rounded-xl flex items-center gap-1.5 select-none pointer-events-auto shadow-md">
+                  {/* Escudo esquinero pegado en top-0 right-0: Cubre al 100% el ícono [↗] de Google Drive sin dejar ni 1px libre */}
+                  <div className="absolute top-0 right-0 z-30 bg-zinc-950/95 backdrop-blur-md border-b border-l border-white/15 px-3.5 py-2 rounded-bl-2xl flex items-center gap-1.5 select-none pointer-events-auto shadow-lg">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                     <span className="text-[9px] font-bold tracking-widest uppercase text-white/95">
                       Deluces HD
@@ -689,12 +688,9 @@ export default function SlugClient({ slug }) {
               )}
             </div>
 
-            {/* Tarjeta Inferior Elegante (Se adapta al ancho del formato Horizontal o Vertical) */}
-            <div 
-              className={`mt-3.5 w-full ${
-                esVideoHorizontal ? 'max-w-[94vw] md:max-w-3xl' : 'max-w-[340px] md:max-w-2xl'
-              } bg-zinc-900/90 border border-white/10 p-3.5 sm:p-4 rounded-2xl backdrop-blur-md shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3`}
-            >
+            {/* Tarjeta Inferior Unificada */}
+            <div className="mt-3 w-full bg-zinc-900/95 border border-white/10 p-4 rounded-2xl backdrop-blur-md shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3.5">
+              
               <div className="w-full sm:w-auto flex items-center justify-between sm:block text-left">
                 {itemsVisibles.length > 1 && (
                   <button
@@ -716,7 +712,7 @@ export default function SlugClient({ slug }) {
                     {tituloModalLimpio || trabajoSeleccionado?.carpeta || data.titulo}
                   </h3>
                   <div className="flex items-center justify-center sm:justify-start gap-2 mt-0.5">
-                    <p className="text-[10px] text-amber-400/90 uppercase tracking-widest font-semibold">
+                    <p className="text-[10px] text-amber-400 uppercase tracking-widest font-semibold">
                       {trabajoSeleccionado?.videoUrl ? (esVideoHorizontal ? 'Video Horizontal 16:9' : 'Reel / Video Vertical 9:16') : `Fotografía #${indiceActual + 1}`}
                     </p>
                     <span className="text-xs text-white/30">•</span>
@@ -740,15 +736,13 @@ export default function SlugClient({ slug }) {
               <a 
                 href="#contacto-servicio" 
                 onClick={cerrarModal} 
-                className="w-full sm:w-auto btn-shimmer bg-amber-600 hover:bg-amber-500 px-6 py-2.5 sm:py-3 rounded-xl text-white text-xs sm:text-sm font-bold transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer flex-shrink-0"
+                className="w-full sm:w-auto bg-amber-600 hover:bg-amber-500 px-6 py-3 rounded-xl text-white text-xs sm:text-sm font-bold transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer flex-shrink-0"
               >
                 <Send size={15} /> Cotizar este servicio
               </a>
             </div>
 
           </div>
-
-          <div className="h-1 md:hidden" />
         </div>
       )}
 
