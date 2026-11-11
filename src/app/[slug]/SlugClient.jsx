@@ -18,6 +18,7 @@ const infoCategorias = {
     icono: Video,
     accent: 'bg-blue-600/10',
     colorText: 'text-blue-600',
+    badgeBg: 'bg-blue-600',
     formulario: 'Eventos Institucionales'
   },
   'parejas': {
@@ -27,6 +28,7 @@ const infoCategorias = {
     icono: Camera,
     accent: 'bg-amber-600/10',
     colorText: 'text-amber-600',
+    badgeBg: 'bg-amber-600',
     formulario: 'Sesión de Fotos de Pareja'
   },
   'publicidad': {
@@ -36,6 +38,7 @@ const infoCategorias = {
     icono: Film,
     accent: 'bg-indigo-600/10',
     colorText: 'text-indigo-600',
+    badgeBg: 'bg-indigo-600',
     formulario: 'Publicidad para Negocios'
   },
   'revelacion-genero': {
@@ -45,6 +48,7 @@ const infoCategorias = {
     icono: Camera,
     accent: 'bg-pink-600/10',
     colorText: 'text-pink-600',
+    badgeBg: 'bg-pink-600',
     formulario: 'Revelación de Género / Sociales'
   },
   'fiestas-patronales': {
@@ -54,6 +58,7 @@ const infoCategorias = {
     icono: Video,
     accent: 'bg-orange-600/10',
     colorText: 'text-orange-600',
+    badgeBg: 'bg-orange-600',
     formulario: 'Fiestas Patronales'
   },
   'videoclips': {
@@ -63,6 +68,7 @@ const infoCategorias = {
     icono: Film,
     accent: 'bg-purple-600/10',
     colorText: 'text-purple-600',
+    badgeBg: 'bg-purple-600',
     formulario: 'Videoclips y Grupos de Baile'
   },
   'invitaciones-virtuales': {
@@ -72,6 +78,7 @@ const infoCategorias = {
     icono: Film,
     accent: 'bg-cyan-600/10',
     colorText: 'text-cyan-600',
+    badgeBg: 'bg-cyan-600',
     formulario: 'Invitaciones Virtuales'
   },
   'personal': {
@@ -81,6 +88,7 @@ const infoCategorias = {
     icono: Camera,
     accent: 'bg-emerald-600/10',
     colorText: 'text-emerald-600',
+    badgeBg: 'bg-emerald-600',
     formulario: 'Fotos y Videos Personales'
   }
 };
@@ -94,22 +102,19 @@ const formatearImagenUrl = (url) => {
   return url;
 };
 
-// Función que elimina el texto redundante cuando el título de la foto repite el nombre de la carpeta
+// Elimina el texto redundante cuando el título de la foto repite el nombre de la carpeta
 const obtenerTituloLimpio = (foto) => {
   if (!foto) return '';
   const titulo = (foto.titulo || '').trim();
   const carpeta = (foto.carpeta || '').trim();
   if (!titulo) return '';
 
-  // Si el título empieza con el nombre de la carpeta (ej: 'I.E.I N° 31775... #1'), le quitamos el nombre repetido
   if (carpeta && titulo.toLowerCase().startsWith(carpeta.toLowerCase())) {
     const resto = titulo.slice(carpeta.length).trim().replace(/^[-–—•:]+\s*/, '');
-    // Si solo quedaba un número como '#1', devolvemos vacío para que solo se vea la etiqueta limpia
     if (!resto || /^#?\d+$/.test(resto)) return '';
     return resto;
   }
 
-  // Si el título es genérico como 'Fotografía #1' o 'Foto #1', también evitamos duplicarlo
   if (/^(fotograf[ií]a|foto|video)\s*#?\d*$/i.test(titulo)) {
     return '';
   }
@@ -312,7 +317,7 @@ export default function SlugClient({ slug }) {
 
   const IconComponent = data.icono;
   const esVideoHorizontal = trabajoSeleccionado?.formatoVideo === 'horizontal';
-  const badgeColorBg = data.colorText.replace('text-', 'bg-');
+  const badgeColorBg = data.badgeBg || 'bg-amber-600';
   const tituloModalLimpio = obtenerTituloLimpio(trabajoSeleccionado);
 
   return (
@@ -364,7 +369,7 @@ export default function SlugClient({ slug }) {
               {usaCarpetas && !carpetaActiva 
                 ? 'Selecciona una carpeta para explorar las fotografías de cada institución.'
                 : usaCarpetas && carpetaActiva 
-                  ? `${itemsVisibles.length} fotografías en este álbum • Toca cualquiera para ampliar.`
+                  ? `${itemsVisibles.length} archivos en este álbum • Toca cualquiera para ampliar.`
                   : 'Haz clic en cualquier elemento para visualizarlo en pantalla completa.'}
             </p>
           </div>
@@ -501,7 +506,7 @@ export default function SlugClient({ slug }) {
           </div>
         ) : (
           /* ========================================================== */
-          /* CUADRÍCULA DE FOTOS LIMPIA (SIN TEXTOS REDUNDANTES)        */
+          /* CUADRÍCULA DE FOTOS LIMPIA                                 */
           /* ========================================================== */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
             {itemsVisibles.map((foto, index) => {
@@ -518,7 +523,6 @@ export default function SlugClient({ slug }) {
                     className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 z-0 opacity-90 group-hover:opacity-100" 
                     loading="lazy"
                   />
-                  {/* Gradiente sutil en la base para no tapar la foto */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent opacity-60 group-hover:opacity-90 transition-opacity duration-300 z-10" />
                   
                   {foto.videoUrl && (
@@ -533,7 +537,6 @@ export default function SlugClient({ slug }) {
                     <Eye size={18} />
                   </div>
                   
-                  {/* Etiqueta única y limpia en la esquina inferior */}
                   <div className="absolute bottom-4 left-4 right-4 z-20">
                     <span className={`text-[10px] uppercase tracking-wider font-bold text-white px-2.5 py-1 rounded-md shadow-xs ${badgeColorBg}`}>
                       {foto.videoUrl ? `Video #${index + 1}` : `Fotografía #${index + 1}`}
@@ -551,95 +554,165 @@ export default function SlugClient({ slug }) {
         )}
       </section>
 
-      {/* MODAL MULTIMEDIA OPTIMIZADO (SIN DUPLICAR TÍTULOS) */}
+      {/* ========================================================== */}
+      {/* MODAL DE VIDEO Y FOTO PROFESIONAL (OPTIMIZADO PARA MÓVIL)  */}
+      {/* ========================================================== */}
       {modalAbierto && (
         <div 
           onClick={cerrarModal}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
-          className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 md:p-6 animate-fade-in overflow-y-auto"
+          className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-between md:justify-center p-3 sm:p-6 animate-fade-in overflow-y-auto"
         >
-          <button onClick={cerrarModal} className="absolute top-4 right-4 z-50 text-white/70 hover:text-white p-2.5 bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer">
-            <X size={20} strokeWidth={2} />
-          </button>
+          {/* Barra Superior en Celular / Botón Cerrar */}
+          <div 
+            onClick={(e) => e.stopPropagation()} 
+            className="w-full max-w-4xl flex items-center justify-between md:justify-end z-50 pt-1 pb-2 md:pb-0 md:absolute md:top-5 md:right-6"
+          >
+            <div className="flex items-center gap-2 md:hidden bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <span className="text-[11px] font-bold text-white/90 tracking-wide">
+                {indiceActual + 1} de {itemsVisibles.length}
+              </span>
+            </div>
 
+            <button 
+              onClick={cerrarModal} 
+              className="text-white/80 hover:text-white p-2.5 bg-white/10 hover:bg-white/20 border border-white/10 rounded-full transition-colors cursor-pointer"
+              aria-label="Cerrar visor"
+            >
+              <X size={20} strokeWidth={2} />
+            </button>
+          </div>
+
+          {/* Flechas Laterales en PC / Pantallas grandes */}
           {itemsVisibles.length > 1 && (
             <>
               <button 
                 onClick={irAnterior}
-                className="absolute left-2 md:left-6 top-1/2 -translate-y-1/2 z-50 text-white/70 hover:text-white p-2.5 bg-black/50 hover:bg-black/80 rounded-full backdrop-blur-sm transition-all cursor-pointer"
+                className="hidden md:flex absolute left-6 top-1/2 -translate-y-1/2 z-50 text-white/80 hover:text-white p-3 bg-white/10 hover:bg-amber-600 border border-white/15 rounded-full backdrop-blur-md transition-all cursor-pointer"
               >
-                <ChevronLeft size={24} strokeWidth={2} />
+                <ChevronLeft size={26} strokeWidth={2} />
               </button>
               <button 
                 onClick={irSiguiente}
-                className="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 z-50 text-white/70 hover:text-white p-2.5 bg-black/50 hover:bg-black/80 rounded-full backdrop-blur-sm transition-all cursor-pointer"
+                className="hidden md:flex absolute right-6 top-1/2 -translate-y-1/2 z-50 text-white/80 hover:text-white p-3 bg-white/10 hover:bg-amber-600 border border-white/15 rounded-full backdrop-blur-md transition-all cursor-pointer"
               >
-                <ChevronRight size={24} strokeWidth={2} />
+                <ChevronRight size={26} strokeWidth={2} />
               </button>
             </>
           )}
 
-          <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-sm md:max-w-4xl mx-auto flex flex-col items-center my-auto">
-            
+          {/* Contenedor Central Multimedia */}
+          <div 
+            onClick={(e) => e.stopPropagation()} 
+            className="relative w-full max-w-sm md:max-w-4xl mx-auto flex flex-col items-center justify-center my-auto"
+          >
             <div className="w-full flex justify-center items-center">
               {trabajoSeleccionado?.videoUrl ? (
                 <div 
                   className={
                     esVideoHorizontal 
-                      ? "w-full max-w-3xl aspect-video rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black relative"
-                      : "w-full max-w-[290px] md:max-w-[360px] aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black relative"
+                      ? "w-full max-w-3xl aspect-video rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.9)] ring-1 ring-white/20 bg-black relative"
+                      : "w-[80vw] max-w-[320px] md:max-w-[350px] aspect-[9/16] rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.95)] ring-1 ring-white/20 bg-black relative"
                   }
                 >
-                  <iframe 
-                    src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
-                    className="w-full h-full border-0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  ></iframe>
+                  {/* Escalado Virtual 2x -> 0.5x: Hace que Google Drive dibuje controles finos y proporcionales sin recortar ni tapar el centro del video */}
+                  <div className="absolute inset-0 w-full h-full overflow-hidden bg-black">
+                    <iframe 
+                      key={trabajoSeleccionado.id || indiceActual}
+                      src={obtenerLinkEmbed(trabajoSeleccionado.videoUrl)} 
+                      style={{
+                        position: 'absolute',
+                        top: '-1%',
+                        left: '-2%',
+                        width: '204%',
+                        height: '202%',
+                        transform: 'scale(0.5)',
+                        transformOrigin: 'top left',
+                      }}
+                      className="border-0 bg-black"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+
+                  {/* Insignia superior derecha que cubre el botón gris [↗] de Google Drive */}
+                  <div className="absolute top-2.5 right-2.5 z-30 bg-black/85 backdrop-blur-md border border-white/15 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 select-none pointer-events-auto">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    <span className="text-[9px] font-bold tracking-widest uppercase text-white/90">
+                      Deluces HD
+                    </span>
+                  </div>
                 </div>
               ) : (
-                <div className="relative">
+                <div className="relative flex items-center justify-center">
                   <img 
                     src={formatearImagenUrl(trabajoSeleccionado?.imagenUrl)} 
                     alt={tituloModalLimpio || trabajoSeleccionado?.carpeta || data.titulo} 
-                    className="max-h-[65vh] md:max-h-[72vh] w-auto max-w-full object-contain rounded-lg shadow-2xl ring-1 ring-white/10 select-none"
+                    className="max-h-[62vh] md:max-h-[72vh] w-auto max-w-full object-contain rounded-2xl shadow-2xl ring-1 ring-white/15 select-none"
                   />
                 </div>
               )}
             </div>
 
-            <div className="mt-4 md:mt-6 w-full flex flex-col md:flex-row items-center justify-between gap-4 px-2 bg-black/40 md:bg-transparent p-3 md:p-0 rounded-xl backdrop-blur-sm md:backdrop-blur-none">
-              <div className="text-center md:text-left">
-                {tituloModalLimpio && trabajoSeleccionado?.carpeta && (
-                  <span className="text-[10px] uppercase tracking-widest text-amber-400 font-bold block mb-0.5">
-                    📁 {trabajoSeleccionado.carpeta}
-                  </span>
+            {/* Tarjeta Inferior Elegante con Navegación Móvil y Botón Sólido */}
+            <div className="mt-4 w-full max-w-[340px] md:max-w-2xl bg-zinc-900/90 border border-white/10 p-4 rounded-2xl backdrop-blur-md shadow-2xl flex flex-col md:flex-row items-center justify-between gap-3.5">
+              
+              <div className="w-full md:w-auto flex items-center justify-between md:block text-left">
+                {itemsVisibles.length > 1 && (
+                  <button
+                    onClick={irAnterior}
+                    className="md:hidden p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer flex-shrink-0"
+                    aria-label="Anterior"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
                 )}
-                <h3 className="text-base md:text-xl font-bold text-white tracking-wide">
-                  {tituloModalLimpio || trabajoSeleccionado?.carpeta || data.titulo}
-                </h3>
-                <div className="flex items-center justify-center md:justify-start gap-2 mt-1">
-                  <p className="text-[10px] text-white/50 uppercase tracking-[0.15em] font-medium">
-                    {trabajoSeleccionado?.videoUrl ? (esVideoHorizontal ? 'Video Horizontal HD' : 'Reel / Video Vertical') : `Fotografía #${indiceActual + 1}`}
-                  </p>
-                  <span className="text-xs text-white/30">•</span>
-                  <p className="text-[10px] text-white/50 font-medium">
-                    {indiceActual + 1} de {itemsVisibles.length}
-                  </p>
+
+                <div className="text-center md:text-left px-2 md:px-0 min-w-0 flex-1">
+                  {tituloModalLimpio && trabajoSeleccionado?.carpeta && (
+                    <span className="text-[10px] uppercase tracking-widest text-amber-400 font-bold block mb-0.5 truncate">
+                      📁 {trabajoSeleccionado.carpeta}
+                    </span>
+                  )}
+                  <h3 className="text-sm md:text-lg font-bold text-white tracking-wide truncate">
+                    {tituloModalLimpio || trabajoSeleccionado?.carpeta || data.titulo}
+                  </h3>
+                  <div className="flex items-center justify-center md:justify-start gap-2 mt-0.5">
+                    <p className="text-[10px] text-amber-400/90 uppercase tracking-widest font-semibold">
+                      {trabajoSeleccionado?.videoUrl ? (esVideoHorizontal ? 'Video Horizontal HD' : 'Reel / Video Vertical') : `Fotografía #${indiceActual + 1}`}
+                    </p>
+                    <span className="text-xs text-white/30">•</span>
+                    <p className="text-[10px] text-white/60 font-medium">
+                      {indiceActual + 1} de {itemsVisibles.length}
+                    </p>
+                  </div>
                 </div>
+
+                {itemsVisibles.length > 1 && (
+                  <button
+                    onClick={irSiguiente}
+                    className="md:hidden p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer flex-shrink-0"
+                    aria-label="Siguiente"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                )}
               </div>
               
               <a 
                 href="#contacto-servicio" 
                 onClick={cerrarModal} 
-                className={`px-5 py-2.5 rounded-xl text-white text-xs md:text-sm font-bold transition-all shadow-lg hover:shadow-xl flex items-center gap-2 cursor-pointer flex-shrink-0 ${badgeColorBg}`}
+                className="w-full md:w-auto btn-shimmer bg-amber-600 hover:bg-amber-500 px-6 py-3 rounded-xl text-white text-xs md:text-sm font-bold transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer flex-shrink-0"
               >
-                Cotizar este servicio
+                <Send size={15} /> Cotizar este servicio
               </a>
             </div>
 
           </div>
+
+          <div className="h-1 md:hidden" />
         </div>
       )}
 
