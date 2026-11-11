@@ -517,19 +517,46 @@ export default function AreaClientes() {
 
             {videoActivo && (
               <div className="mt-6 pt-6 border-t df-border animate-fade-in">
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-xs font-bold uppercase tracking-wider text-amber-600">Reproductor de Video</span>
-                  <button onClick={() => setVideoActivo(null)} className="text-xs df-muted hover:df-text flex items-center gap-1 cursor-pointer">
-                    <X size={14} /> Cerrar reproductor
-                  </button>
+                <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-600">
+                    Reproductor Deluces Films HD
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      type="button"
+                      onClick={() => setVideoActivo(null)} 
+                      className="text-xs df-muted hover:df-text flex items-center gap-1 cursor-pointer"
+                    >
+                      <X size={15} /> Cerrar reproductor
+                    </button>
+                  </div>
                 </div>
-                <div className="w-full aspect-video bg-black rounded-2xl overflow-hidden border df-border shadow-xl">
-                  <iframe
-                    src={videoActivo}
-                    className="w-full h-full border-0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
+
+                {/* Reproductor 16:9 con Escalado Virtual 2x para evitar controles gigantes en celular */}
+                <div className="w-full max-w-3xl mx-auto aspect-video bg-black rounded-2xl sm:rounded-3xl overflow-hidden border df-border shadow-2xl relative">
+                  <div className="absolute inset-0 w-full h-full overflow-hidden bg-black">
+                    <iframe
+                      src={videoActivo}
+                      style={{
+                        position: 'absolute',
+                        top: '-2%',
+                        left: '-2%',
+                        width: '204%',
+                        height: '204%',
+                        transform: 'scale(0.5)',
+                        transformOrigin: 'top left',
+                      }}
+                      className="border-0 bg-black"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                  <div className="absolute top-2.5 right-2.5 z-30 bg-black/90 backdrop-blur-md border border-white/15 px-3 py-1.5 rounded-xl flex items-center gap-1.5 select-none pointer-events-auto">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    <span className="text-[9px] font-bold tracking-widest uppercase text-white/95">
+                      Deluces HD
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
