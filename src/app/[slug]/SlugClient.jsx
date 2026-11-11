@@ -94,6 +94,29 @@ const formatearImagenUrl = (url) => {
   return url;
 };
 
+// Función que elimina el texto redundante cuando el título de la foto repite el nombre de la carpeta
+const obtenerTituloLimpio = (foto) => {
+  if (!foto) return '';
+  const titulo = (foto.titulo || '').trim();
+  const carpeta = (foto.carpeta || '').trim();
+  if (!titulo) return '';
+
+  // Si el título empieza con el nombre de la carpeta (ej: 'I.E.I N° 31775... #1'), le quitamos el nombre repetido
+  if (carpeta && titulo.toLowerCase().startsWith(carpeta.toLowerCase())) {
+    const resto = titulo.slice(carpeta.length).trim().replace(/^[-–—•:]+\s*/, '');
+    // Si solo quedaba un número como '#1', devolvemos vacío para que solo se vea la etiqueta limpia
+    if (!resto || /^#?\d+$/.test(resto)) return '';
+    return resto;
+  }
+
+  // Si el título es genérico como 'Fotografía #1' o 'Foto #1', también evitamos duplicarlo
+  if (/^(fotograf[ií]a|foto|video)\s*#?\d*$/i.test(titulo)) {
+    return '';
+  }
+
+  return titulo;
+};
+
 export default function SlugClient({ slug }) {
   const [mounted, setMounted] = useState(false);
   const data = infoCategorias[slug] || infoCategorias['institucional'];
@@ -101,7 +124,6 @@ export default function SlugClient({ slug }) {
   const [galeriaFotos, setGaleriaFotos] = useState([]);
   const [cargandoFotos, setCargandoFotos] = useState(true);
 
-  // Estado para controlar qué carpeta está abierta actualmente (null = mostrando carpetas)
   const [carpetaActiva, setCarpetaActiva] = useState(null);
 
   const [nombre, setNombre] = useState('');
@@ -174,7 +196,6 @@ export default function SlugClient({ slug }) {
 
     const mapa = new Map();
     galeriaFotos.forEach(item => {
-      // Si hay fotos antiguas sin carpeta, se agrupan automáticamente para nunca mezclarse con las nuevas
       const nombreCarpeta = (item.carpeta && item.carpeta.trim() !== '') 
         ? item.carpeta.trim() 
         : 'Galería Destacada';
@@ -202,7 +223,6 @@ export default function SlugClient({ slug }) {
     return { usaCarpetas: true, listaCarpetas: arregloCarpetas };
   }, [galeriaFotos]);
 
-  // Elementos visibles actualmente (si hay una carpeta abierta, solo muestra las fotos de esa carpeta)
   const itemsVisibles = useMemo(() => {
     if (!usaCarpetas) return galeriaFotos;
     if (!carpetaActiva) return [];
@@ -210,7 +230,6 @@ export default function SlugClient({ slug }) {
     return carpetaEncontrada ? carpetaEncontrada.items : [];
   }, [usaCarpetas, carpetaActiva, listaCarpetas, galeriaFotos]);
 
-  // Control por teclado para la galería (recorre solo la carpeta activa)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (!modalAbierto) return;
@@ -228,7 +247,6 @@ export default function SlugClient({ slug }) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Funciones del Modal Multimedia
   const abrirModal = (index) => {
     setIndiceActual(index);
     setTrabajoSeleccionado(itemsVisibles[index]);
@@ -295,6 +313,7 @@ export default function SlugClient({ slug }) {
   const IconComponent = data.icono;
   const esVideoHorizontal = trabajoSeleccionado?.formatoVideo === 'horizontal';
   const badgeColorBg = data.colorText.replace('text-', 'bg-');
+  const tituloModalLimpio = obtenerTituloLimpio(trabajoSeleccionado);
 
   return (
     <div className="min-h-screen df-bg df-text font-sans relative">
@@ -330,12 +349,12 @@ export default function SlugClient({ slug }) {
               {usaCarpetas && !carpetaActiva ? (
                 <>
                   <FolderOpen size={24} className="text-amber-600" />
-                  Álbumes y Carpetas por Institución / Evento
+                  Álbumes por Institución / Evento
                 </>
               ) : usaCarpetas && carpetaActiva ? (
                 <>
-                  <FolderOpen size={24} className="text-amber-600" />
-                  {carpetaActiva}
+                  <FolderOpen size={24} className="text-amber-600 flex-shrink-0" />
+                  <span>{carpetaActiva}</span>
                 </>
               ) : (
                 'Muestras del Servicio'
@@ -343,9 +362,9 @@ export default function SlugClient({ slug }) {
             </h2>
             <p className="text-xs df-muted mt-1">
               {usaCarpetas && !carpetaActiva 
-                ? 'Selecciona una carpeta para explorar la galería exclusiva de cada institución o evento sin mezclarlas.'
+                ? 'Selecciona una carpeta para explorar las fotografías de cada institución.'
                 : usaCarpetas && carpetaActiva 
-                  ? `Explorando ${itemsVisibles.length} archivos de esta carpeta.`
+                  ? `${itemsVisibles.length} fotografías en este álbum • Toca cualquiera para ampliar.`
                   : 'Haz clic en cualquier elemento para visualizarlo en pantalla completa.'}
             </p>
           </div>
@@ -353,7 +372,7 @@ export default function SlugClient({ slug }) {
           {usaCarpetas && carpetaActiva ? (
             <button
               onClick={() => setCarpetaActiva(null)}
-              className="df-card border df-border hover:border-amber-600 df-text px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-sm hover:shadow-md cursor-pointer w-fit"
+              className="df-card border df-border hover:border-amber-600 df-text px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-sm hover:shadow-md cursor-pointer w-fit flex-shrink-0"
             >
               <LayoutGrid size={15} className="text-amber-600" />
               Ver todas las carpetas ({listaCarpetas.length})
@@ -365,7 +384,7 @@ export default function SlugClient({ slug }) {
           )}
         </div>
 
-        {/* BARRA RÁPIDA DE PESTAÑAS DE CARPETAS (Cuando estás dentro de una carpeta) */}
+        {/* BARRA RÁPIDA DE PESTAÑAS DE CARPETAS */}
         {usaCarpetas && carpetaActiva && listaCarpetas.length > 1 && (
           <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 custom-scrollbar">
             <button
@@ -397,7 +416,7 @@ export default function SlugClient({ slug }) {
           </div>
         )}
 
-        {/* CONTENIDO PRINCIPAL: CARGANDO / VACÍO / VISTA DE CARPETAS / VISTA DE FOTOS */}
+        {/* CONTENIDO PRINCIPAL */}
         {cargandoFotos ? (
           <div className="text-center py-12 df-muted text-sm">Cargando portafolio desde la nube...</div>
         ) : galeriaFotos.length === 0 ? (
@@ -406,7 +425,7 @@ export default function SlugClient({ slug }) {
           </div>
         ) : usaCarpetas && !carpetaActiva ? (
           /* ========================================================== */
-          /* DISEÑO ESPECTACULAR DE CARPETAS / ÁLBUMES APILADOS         */
+          /* DISEÑO DE CARPETAS / ÁLBUMES APILADOS                      */
           /* ========================================================== */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pt-4">
             {listaCarpetas.map((carpeta, idx) => (
@@ -415,7 +434,6 @@ export default function SlugClient({ slug }) {
                 onClick={() => setCarpetaActiva(carpeta.nombre)}
                 className="group relative cursor-pointer pt-3"
               >
-                {/* Capas traseras que simulan fotos apiladas dentro de la carpeta */}
                 <div className="absolute top-0 left-6 right-6 h-40 rounded-3xl df-card border df-border opacity-50 transform -translate-y-2 scale-95 group-hover:-translate-y-4 group-hover:rotate-2 transition-all duration-500 z-0 shadow-sm overflow-hidden">
                   {carpeta.miniaturas[2] && (
                     <img src={formatearImagenUrl(carpeta.miniaturas[2])} alt="" className="w-full h-full object-cover opacity-40" />
@@ -427,10 +445,7 @@ export default function SlugClient({ slug }) {
                   )}
                 </div>
 
-                {/* Tarjeta Frontal Principal de la Carpeta */}
                 <div className="relative h-[330px] df-card rounded-3xl overflow-hidden border df-border shadow-lg group-hover:shadow-2xl group-hover:border-amber-600/60 transition-all duration-500 z-10 flex flex-col justify-between bg-black">
-                  
-                  {/* Imagen de Portada de la Carpeta */}
                   <img
                     src={formatearImagenUrl(carpeta.portada)}
                     alt={carpeta.nombre}
@@ -438,10 +453,8 @@ export default function SlugClient({ slug }) {
                     loading="lazy"
                   />
 
-                  {/* Gradiente oscuro elegante */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/45 to-black/20 z-10" />
 
-                  {/* Parte Superior: Etiqueta de Álbum + Contador */}
                   <div className="relative z-20 p-5 flex justify-between items-start">
                     <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-amber-400 bg-black/60 border border-amber-500/40 px-3 py-1.5 rounded-full backdrop-blur-md shadow-sm">
                       <FolderOpen size={13} className="text-amber-400" />
@@ -450,20 +463,18 @@ export default function SlugClient({ slug }) {
 
                     <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-white/15 border border-white/20 px-3 py-1 rounded-full backdrop-blur-md">
                       <Images size={13} />
-                      {carpeta.total} {carpeta.total === 1 ? 'archivo' : 'archivos'}
+                      {carpeta.total} {carpeta.total === 1 ? 'foto' : 'fotos'}
                     </span>
                   </div>
 
-                  {/* Parte Inferior: Nombre de la Institución + Miniaturas + Botón */}
                   <div className="relative z-20 p-6">
                     <p className="text-[10px] uppercase tracking-widest text-amber-400 font-bold mb-1">
                       {data.titulo}
                     </p>
-                    <h3 className="text-xl md:text-2xl font-extrabold text-white leading-snug drop-shadow-md group-hover:text-amber-400 transition-colors">
+                    <h3 className="text-lg md:text-xl font-extrabold text-white leading-snug drop-shadow-md group-hover:text-amber-400 transition-colors line-clamp-2">
                       {carpeta.nombre}
                     </h3>
 
-                    {/* Barra inferior con miniaturas apiladas de vista previa y botón de abrir */}
                     <div className="mt-4 pt-3 border-t border-white/15 flex items-center justify-between">
                       <div className="flex items-center -space-x-2 overflow-hidden">
                         {carpeta.miniaturas.slice(0, 3).map((thumb, i) => (
@@ -479,7 +490,7 @@ export default function SlugClient({ slug }) {
                       </div>
 
                       <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white group-hover:translate-x-1 transition-transform">
-                        Abrir carpeta <ArrowRight size={15} className="text-amber-400" />
+                        Abrir álbum <ArrowRight size={15} className="text-amber-400" />
                       </span>
                     </div>
                   </div>
@@ -490,48 +501,57 @@ export default function SlugClient({ slug }) {
           </div>
         ) : (
           /* ========================================================== */
-          /* CUADRÍCULA DE FOTOS Y VIDEOS (DENTRO DE LA CARPETA)        */
+          /* CUADRÍCULA DE FOTOS LIMPIA (SIN TEXTOS REDUNDANTES)        */
           /* ========================================================== */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
-            {itemsVisibles.map((foto, index) => (
-              <div 
-                key={foto.id} 
-                onClick={() => abrirModal(index)}
-                className="group relative h-[280px] df-card rounded-2xl overflow-hidden border df-border shadow-xs cursor-pointer flex items-center justify-center transition-all duration-500 hover:shadow-2xl hover:-translate-y-2 bg-black"
-              >
-                <img 
-                  src={formatearImagenUrl(foto.imagenUrl)} 
-                  alt={foto.titulo} 
-                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 z-0 opacity-80 group-hover:opacity-100" 
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-70 group-hover:opacity-90 transition-opacity duration-300 z-10" />
-                
-                {foto.videoUrl && (
-                  <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
-                    <div className="w-14 h-14 bg-amber-600/90 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform">
-                      <Play fill="currentColor" size={24} className="ml-1" />
+            {itemsVisibles.map((foto, index) => {
+              const tituloPersonalizado = obtenerTituloLimpio(foto);
+              return (
+                <div 
+                  key={foto.id} 
+                  onClick={() => abrirModal(index)}
+                  className="group relative h-[280px] df-card rounded-2xl overflow-hidden border df-border shadow-xs cursor-pointer flex items-center justify-center transition-all duration-500 hover:shadow-2xl hover:-translate-y-2 bg-black"
+                >
+                  <img 
+                    src={formatearImagenUrl(foto.imagenUrl)} 
+                    alt={tituloPersonalizado || `Fotografía #${index + 1}`} 
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 z-0 opacity-90 group-hover:opacity-100" 
+                    loading="lazy"
+                  />
+                  {/* Gradiente sutil en la base para no tapar la foto */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent opacity-60 group-hover:opacity-90 transition-opacity duration-300 z-10" />
+                  
+                  {foto.videoUrl && (
+                    <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+                      <div className="w-14 h-14 bg-amber-600/90 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform">
+                        <Play fill="currentColor" size={24} className="ml-1" />
+                      </div>
                     </div>
+                  )}
+                  
+                  <div className="absolute top-4 right-4 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <Eye size={18} />
                   </div>
-                )}
-                
-                <div className="absolute top-4 right-4 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <Eye size={18} />
+                  
+                  {/* Etiqueta única y limpia en la esquina inferior */}
+                  <div className="absolute bottom-4 left-4 right-4 z-20">
+                    <span className={`text-[10px] uppercase tracking-wider font-bold text-white px-2.5 py-1 rounded-md shadow-xs ${badgeColorBg}`}>
+                      {foto.videoUrl ? `Video #${index + 1}` : `Fotografía #${index + 1}`}
+                    </span>
+                    {tituloPersonalizado && (
+                      <h3 className="text-base font-bold mt-2 text-white drop-shadow-md line-clamp-1">
+                        {tituloPersonalizado}
+                      </h3>
+                    )}
+                  </div>
                 </div>
-                
-                <div className="absolute bottom-4 left-4 right-4 z-20">
-                  <span className={`text-[10px] uppercase tracking-wider font-bold text-white px-2.5 py-1 rounded-md shadow-xs ${badgeColorBg}`}>
-                    {foto.videoUrl ? 'Video' : (foto.carpeta || 'Fotografía')}
-                  </span>
-                  <h3 className="text-base font-bold mt-2 text-white drop-shadow-md">{foto.titulo}</h3>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
 
-      {/* MODAL MULTIMEDIA OPTIMIZADO */}
+      {/* MODAL MULTIMEDIA OPTIMIZADO (SIN DUPLICAR TÍTULOS) */}
       {modalAbierto && (
         <div 
           onClick={cerrarModal}
@@ -582,7 +602,7 @@ export default function SlugClient({ slug }) {
                 <div className="relative">
                   <img 
                     src={formatearImagenUrl(trabajoSeleccionado?.imagenUrl)} 
-                    alt={trabajoSeleccionado?.titulo} 
+                    alt={tituloModalLimpio || trabajoSeleccionado?.carpeta || data.titulo} 
                     className="max-h-[65vh] md:max-h-[72vh] w-auto max-w-full object-contain rounded-lg shadow-2xl ring-1 ring-white/10 select-none"
                   />
                 </div>
@@ -591,21 +611,21 @@ export default function SlugClient({ slug }) {
 
             <div className="mt-4 md:mt-6 w-full flex flex-col md:flex-row items-center justify-between gap-4 px-2 bg-black/40 md:bg-transparent p-3 md:p-0 rounded-xl backdrop-blur-sm md:backdrop-blur-none">
               <div className="text-center md:text-left">
-                {trabajoSeleccionado?.carpeta && (
+                {tituloModalLimpio && trabajoSeleccionado?.carpeta && (
                   <span className="text-[10px] uppercase tracking-widest text-amber-400 font-bold block mb-0.5">
                     📁 {trabajoSeleccionado.carpeta}
                   </span>
                 )}
                 <h3 className="text-base md:text-xl font-bold text-white tracking-wide">
-                  {trabajoSeleccionado?.titulo}
+                  {tituloModalLimpio || trabajoSeleccionado?.carpeta || data.titulo}
                 </h3>
                 <div className="flex items-center justify-center md:justify-start gap-2 mt-1">
                   <p className="text-[10px] text-white/50 uppercase tracking-[0.15em] font-medium">
-                    {trabajoSeleccionado?.videoUrl ? (esVideoHorizontal ? 'Video Horizontal HD' : 'Reel / Video Vertical') : 'Fotografía'}
+                    {trabajoSeleccionado?.videoUrl ? (esVideoHorizontal ? 'Video Horizontal HD' : 'Reel / Video Vertical') : `Fotografía #${indiceActual + 1}`}
                   </p>
                   <span className="text-xs text-white/30">•</span>
                   <p className="text-[10px] text-white/50 font-medium">
-                    {indiceActual + 1} / {itemsVisibles.length}
+                    {indiceActual + 1} de {itemsVisibles.length}
                   </p>
                 </div>
               </div>
@@ -613,7 +633,7 @@ export default function SlugClient({ slug }) {
               <a 
                 href="#contacto-servicio" 
                 onClick={cerrarModal} 
-                className={`px-5 py-2.5 rounded-xl text-white text-xs md:text-sm font-bold transition-all shadow-lg hover:shadow-xl flex items-center gap-2 cursor-pointer ${badgeColorBg}`}
+                className={`px-5 py-2.5 rounded-xl text-white text-xs md:text-sm font-bold transition-all shadow-lg hover:shadow-xl flex items-center gap-2 cursor-pointer flex-shrink-0 ${badgeColorBg}`}
               >
                 Cotizar este servicio
               </a>
