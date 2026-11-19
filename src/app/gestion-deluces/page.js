@@ -7,7 +7,8 @@ import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebas
 import { 
   ShieldCheck, PlusCircle, ArrowLeft, Image as ImageIcon, 
   Trash2, Edit2, X, RefreshCw, Video, LogOut, Copy, Send, 
-  Search, Plus, BookOpen, Star, FolderOpen, Layers, Sparkles, Music
+  Search, Plus, BookOpen, Star, FolderOpen, Layers, Sparkles,
+  Music, Sun, Moon, Users, AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -70,6 +71,12 @@ export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [cargandoAuth, setCargandoAuth] = useState(false);
   const [refrescando, setRefrescando] = useState(false);
+  const [erroresCarga, setErroresCarga] = useState([]);
+
+  // Tema y Navegación por Pestañas
+  const [mounted, setMounted] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [tabActiva, setTabActiva] = useState('clientes'); // 'clientes' | 'portafolio' | 'resenas'
   
   // ESTADOS CLIENTES
   const clienteInicial = { 
@@ -110,10 +117,28 @@ export default function AdminPage() {
   const [cargandoGaleria, setCargandoGaleria] = useState(false);
   const [listaGaleria, setListaGaleria] = useState([]);
   const [editandoFotoId, setEditandoFotoId] = useState(null);
-  const [filtroCategoria, setFiltroCategoria] = useState('institucional');
+  const [filtroCategoria, setFiltroCategoria] = useState('todas');
 
   // ESTADOS TESTIMONIOS RECIBIDOS
   const [listaTestimonios, setListaTestimonios] = useState([]);
+
+  // Sincronización de Modo Oscuro / Claro
+  useEffect(() => {
+    setMounted(true);
+    const saved = localStorage.getItem('isDarkMode');
+    const dark = saved === null ? true : saved === 'true';
+    setIsDarkMode(dark);
+    document.documentElement.classList.toggle('dark', dark);
+    document.body.classList.toggle('dark-mode', dark);
+  }, []);
+
+  const toggleDarkMode = () => {
+    const next = !isDarkMode;
+    setIsDarkMode(next);
+    localStorage.setItem('isDarkMode', String(next));
+    document.documentElement.classList.toggle('dark', next);
+    document.body.classList.toggle('dark-mode', next);
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -123,28 +148,48 @@ export default function AdminPage() {
     return () => unsubscribe();
   }, []);
 
+  // CARGA BLINDADA: Si falla una colección (ej. permisos en testimonios), las demás SÍ cargan
   const cargarDatos = async () => {
     setRefrescando(true);
-    try {
-      const [clientesSnapshot, galeriaSnapshot, testimoniosSnapshot] = await Promise.all([
-        getDocs(collection(db, "clientes")),
-        getDocs(collection(db, "galerias")),
-        getDocs(collection(db, "testimonios")),
-      ]);
+    setErroresCarga([]);
 
-      setListaClientes(clientesSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    const [resClientes, resGaleria, resTestimonios] = await Promise.allSettled([
+      getDocs(collection(db, "clientes")),
+      getDocs(collection(db, "galerias")),
+      getDocs(collection(db, "testimonios")),
+    ]);
 
-      const fotosCargadas = galeriaSnapshot.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => Number(a.orden) - Number(b.orden));
-      setListaGaleria(fotosCargadas);
+    const nuevosErrores = [];
 
-      setListaTestimonios(testimoniosSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (error) {
-      console.error("Error al cargar datos:", error);
-    } finally {
-      setTimeout(() => setRefrescando(false), 400); 
+    if (resClientes.status === 'fulfilled') {
+      setListaClientes(resClientes.value.docs.map(d => ({ id: d.id, ...d.data() })));
+    } else {
+      console.error("Error cargando clientes:", resClientes.reason);
+      nuevosErrores.push(`Clientes: ${resClientes.reason?.code || resClientes.reason?.message || 'Error de lectura'}`);
     }
+
+    if (resGaleria.status === 'fulfilled') {
+      const fotosCargadas = resGaleria.value.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0));
+      setListaGaleria(fotosCargadas);
+    } else {
+      console.error("Error cargando galerias:", resGaleria.reason);
+      nuevosErrores.push(`Portafolio: ${resGaleria.reason?.code || resGaleria.reason?.message || 'Error de lectura'}`);
+    }
+
+    if (resTestimonios.status === 'fulfilled') {
+      const testimoniosOrdenados = resTestimonios.value.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setListaTestimonios(testimoniosOrdenados);
+    } else {
+      console.error("Error cargando testimonios:", resTestimonios.reason);
+      nuevosErrores.push(`Reseñas (testimonios): ${resTestimonios.reason?.code || resTestimonios.reason?.message || 'Error de lectura'}`);
+    }
+
+    setErroresCarga(nuevosErrores);
+    setTimeout(() => setRefrescando(false), 300);
   };
 
   const carpetasExistentesEnCategoria = useMemo(() => {
@@ -153,6 +198,15 @@ export default function AdminPage() {
       .map(f => f.carpeta.trim());
     return [...new Set(nombres)];
   }, [listaGaleria, formGaleria.slug]);
+
+  const totalCarpetasUnicas = useMemo(() => {
+    const setCarpetas = new Set(
+      listaGaleria
+        .filter(f => f.carpeta && f.carpeta.trim() !== '')
+        .map(f => `${f.slug}::${f.carpeta.trim()}`)
+    );
+    return setCarpetas.size;
+  }, [listaGaleria]);
 
   useEffect(() => {
     if (!editandoFotoId && user) {
@@ -327,6 +381,7 @@ export default function AdminPage() {
   };
 
   const prepararEdicionCliente = (cliente) => {
+    setTabActiva('clientes');
     setEditandoClienteId(cliente.id);
     const tipoGuardado = cliente.musicaTipo || (cliente.musicaUrl ? 'personalizada' : 'ambiental');
     setFormCliente({
@@ -348,9 +403,6 @@ export default function AdminPage() {
     alert(`¡Mensaje de entrega para "${cliente.nombreCliente}" copiado al portapapeles!`);
   };
 
-  // ==========================================================
-  // GUARDAR EN PORTAFOLIO (1 LINK DE CARPETA / LOTE / INDIVIDUAL)
-  // ==========================================================
   const handleSubmitGaleria = async (e) => {
     e.preventDefault();
     setCargandoGaleria(true);
@@ -525,6 +577,7 @@ export default function AdminPage() {
   };
 
   const prepararEdicionFoto = (foto) => {
+    setTabActiva('portafolio');
     setEditandoFotoId(foto.id);
     setFormGaleria({ 
       ...galeriaInicial,
@@ -534,22 +587,34 @@ export default function AdminPage() {
       videoUrl: foto.videoUrl || '',
       formatoVideo: foto.formatoVideo || 'vertical'
     });
-    window.scrollTo({ top: 600, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // PANTALLA DE LOGIN
   if (!user) {
     return (
       <div className="min-h-screen df-bg flex items-center justify-center p-6 relative">
         <Link href="/" className="absolute top-8 left-8 flex items-center gap-2 text-sm df-muted hover:df-text transition-all">
           <ArrowLeft size={16} /> Volver al sitio
         </Link>
+        <button
+          type="button"
+          onClick={toggleDarkMode}
+          className="absolute top-8 right-8 p-2.5 rounded-full df-card border df-border df-text hover:border-amber-600 transition-all cursor-pointer"
+          aria-label="Cambiar tema"
+        >
+          {mounted && (isDarkMode ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} />)}
+        </button>
+
         <form onSubmit={handleLogin} className="df-card p-8 rounded-3xl border df-border w-full max-w-md shadow-2xl text-center">
-          <ShieldCheck className="w-12 h-12 text-amber-600 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold df-text mb-2">Panel Administrativo</h1>
-          <p className="df-muted text-sm mb-6">Ingresa tus credenciales seguras.</p>
+          <div className="w-16 h-16 bg-amber-600/15 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-5">
+            <ShieldCheck size={32} />
+          </div>
+          <h1 className="text-2xl font-black df-text mb-1">Deluces Studio Admin</h1>
+          <p className="df-muted text-sm mb-6">Ingresa tus credenciales de administrador.</p>
           
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full df-card border df-border rounded-xl px-4 py-3 mb-3 text-sm outline-none focus:border-amber-600 df-text" placeholder="Correo electrónico" required />
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full df-card border df-border rounded-xl px-4 py-3 mb-6 text-sm outline-none focus:border-amber-600 df-text" placeholder="Contraseña" required />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full df-bg border df-border rounded-xl px-4 py-3 mb-3 text-sm outline-none focus:border-amber-600 df-text" placeholder="Correo electrónico" required />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full df-bg border df-border rounded-xl px-4 py-3 mb-6 text-sm outline-none focus:border-amber-600 df-text" placeholder="Contraseña" required />
           
           <button type="submit" disabled={cargandoAuth} className="w-full bg-amber-600 text-white font-bold py-3.5 rounded-xl hover:bg-amber-700 transition-all cursor-pointer text-sm shadow-md">
             {cargandoAuth ? 'Verificando...' : 'Entrar al Panel'}
@@ -579,43 +644,208 @@ export default function AdminPage() {
   const audioPruebaSrc = obtenerSrcPruebaAudio(formCliente.musicaTipo, formCliente.musicaUrl);
 
   return (
-    <div className="min-h-screen df-bg py-16 px-6">
-      <div className="max-w-5xl mx-auto space-y-12">
-        <div className="flex flex-wrap justify-between items-center gap-4">
-          <div>
-            <span className="text-xs uppercase tracking-widest font-bold text-amber-600">Gestión General</span>
-            <h1 className="text-3xl font-black df-text mt-1">Panel de Control</h1>
+    <div className="min-h-screen df-bg pb-20">
+      {/* BARRA SUPERIOR FIJA */}
+      <header className="sticky top-0 z-40 df-bg/90 backdrop-blur-md border-b df-border px-6 py-4">
+        <div className="max-w-6xl mx-auto flex flex-wrap justify-between items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center shadow-md">
+              <ShieldCheck size={20} />
+            </div>
+            <div>
+              <span className="text-[10px] uppercase tracking-widest font-bold text-amber-600 block leading-none">
+                Deluces Films • Studio
+              </span>
+              <h1 className="text-xl sm:text-2xl font-black df-text leading-tight">
+                Panel de Control
+              </h1>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <button onClick={cargarDatos} disabled={refrescando} className={`text-sm flex items-center gap-2 transition-all cursor-pointer ${refrescando ? 'text-amber-500' : 'df-muted hover:text-amber-500'}`}>
-              <RefreshCw size={16} className={refrescando ? "animate-spin" : ""} /> 
-              {refrescando ? 'Actualizando...' : 'Actualizar'}
+
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={toggleDarkMode}
+              className="p-2 rounded-xl df-card border df-border df-text hover:border-amber-600 transition-all cursor-pointer"
+              title="Cambiar modo oscuro / claro"
+            >
+              {mounted && (isDarkMode ? <Sun size={16} className="text-amber-400" /> : <Moon size={16} />)}
             </button>
-            <Link href="/" className="text-sm df-muted hover:df-text flex items-center gap-2 ml-2 border-l df-border pl-4">
-              <ArrowLeft size={16} /> Ver Web
+
+            <button
+              type="button"
+              onClick={cargarDatos}
+              disabled={refrescando}
+              className={`px-3 py-2 rounded-xl df-card border df-border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                refrescando ? 'text-amber-500 border-amber-500/50' : 'df-text hover:border-amber-600'
+              }`}
+            >
+              <RefreshCw size={14} className={refrescando ? "animate-spin" : ""} /> 
+              {refrescando ? 'Cargando...' : 'Actualizar'}
+            </button>
+
+            <Link
+              href="/"
+              className="px-3 py-2 rounded-xl df-card border df-border text-xs font-bold df-text hover:border-amber-600 flex items-center gap-1.5 transition-all"
+            >
+              <ArrowLeft size={14} /> Ver Web
             </Link>
-            <button onClick={handleLogout} className="text-sm text-red-500 hover:text-red-600 flex items-center gap-1.5 ml-2 transition-colors cursor-pointer">
-              <LogOut size={16} /> Salir
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="px-3 py-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <LogOut size={14} /> Salir
             </button>
           </div>
         </div>
+      </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="space-y-8">
-            
-            {/* FORMULARIO CLIENTES + ÁLBUM + MÚSICA PERSONALIZADA */}
-            <div className="df-card border df-border p-8 rounded-3xl shadow-xl transition-all">
+      <main className="max-w-6xl mx-auto px-6 pt-8 space-y-8">
+        {/* ALERTA DE DIAGNÓSTICO (Solo aparece si Firebase rechaza alguna colección) */}
+        {erroresCarga.length > 0 && (
+          <div className="p-4 rounded-2xl border border-red-500/40 bg-red-500/10 flex items-start gap-3">
+            <AlertTriangle size={20} className="text-red-500 flex-shrink-0 mt-0.5" />
+            <div className="space-y-1 text-xs">
+              <p className="font-bold text-red-500">
+                Aviso de Firebase (algunas colecciones no pudieron leerse):
+              </p>
+              <ul className="list-disc pl-4 space-y-0.5 df-text">
+                {erroresCarga.map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+              </ul>
+              <p className="df-muted pt-1">
+                Revisa tus <strong>Reglas de Firestore</strong> en Firebase Console para permitir lectura/escritura en esa colección.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* TARJETAS RESUMEN (KPIs) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <button
+            type="button"
+            onClick={() => setTabActiva('clientes')}
+            className={`text-left p-5 rounded-2xl border transition-all cursor-pointer ${
+              tabActiva === 'clientes'
+                ? 'df-card border-amber-600 shadow-lg'
+                : 'df-card df-border hover:border-amber-600/50'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider df-muted">Clientes</span>
+              <Users size={16} className="text-amber-600" />
+            </div>
+            <p className="text-3xl font-black df-text">{listaClientes.length}</p>
+            <p className="text-[11px] df-muted mt-0.5">Accesos activos</p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTabActiva('portafolio')}
+            className={`text-left p-5 rounded-2xl border transition-all cursor-pointer ${
+              tabActiva === 'portafolio'
+                ? 'df-card border-amber-600 shadow-lg'
+                : 'df-card df-border hover:border-amber-600/50'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider df-muted">Portafolio</span>
+              <ImageIcon size={16} className="text-amber-600" />
+            </div>
+            <p className="text-3xl font-black df-text">{listaGaleria.length}</p>
+            <p className="text-[11px] df-muted mt-0.5">Fotos y videos</p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTabActiva('portafolio')}
+            className="text-left p-5 rounded-2xl df-card border df-border hover:border-amber-600/50 transition-all cursor-pointer"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider df-muted">Carpetas</span>
+              <FolderOpen size={16} className="text-amber-600" />
+            </div>
+            <p className="text-3xl font-black df-text">{totalCarpetasUnicas}</p>
+            <p className="text-[11px] df-muted mt-0.5">Álbumes creados</p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTabActiva('resenas')}
+            className={`text-left p-5 rounded-2xl border transition-all cursor-pointer ${
+              tabActiva === 'resenas'
+                ? 'df-card border-amber-600 shadow-lg'
+                : 'df-card df-border hover:border-amber-600/50'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider df-muted">Reseñas</span>
+              <Star size={16} className="text-amber-500" fill="currentColor" />
+            </div>
+            <p className="text-3xl font-black df-text">{listaTestimonios.length}</p>
+            <p className="text-[11px] df-muted mt-0.5">Testimonios reales</p>
+          </button>
+        </div>
+
+        {/* BARRA DE PESTAÑAS */}
+        <div className="flex flex-wrap gap-2 p-1.5 rounded-2xl df-card border df-border w-fit">
+          <button
+            type="button"
+            onClick={() => setTabActiva('clientes')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+              tabActiva === 'clientes'
+                ? 'bg-amber-600 text-white shadow-md'
+                : 'df-muted hover:df-text'
+            }`}
+          >
+            <Users size={15} /> Clientes y Álbumes ({listaClientes.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('portafolio')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+              tabActiva === 'portafolio'
+                ? 'bg-amber-600 text-white shadow-md'
+                : 'df-muted hover:df-text'
+            }`}
+          >
+            <FolderOpen size={15} /> Portafolio Web ({listaGaleria.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('resenas')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+              tabActiva === 'resenas'
+                ? 'bg-amber-600 text-white shadow-md'
+                : 'df-muted hover:df-text'
+            }`}
+          >
+            <Star size={15} /> Reseñas ({listaTestimonios.length})
+          </button>
+        </div>
+
+        {/* ====================================================== */}
+        {/* PESTAÑA 1: CLIENTES Y ÁLBUMES DIGITALES                */}
+        {/* ====================================================== */}
+        {tabActiva === 'clientes' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            {/* FORMULARIO CLIENTES */}
+            <div className="lg:col-span-6 df-card border df-border p-6 sm:p-8 rounded-3xl shadow-xl">
               <div className="mb-6 flex justify-between items-center">
                 <div>
-                  <span className="text-xs uppercase tracking-widest font-bold text-amber-600">Acceso Privado & Álbum</span>
+                  <span className="text-[11px] uppercase tracking-widest font-bold text-amber-600">Acceso Privado & Álbum</span>
                   <h2 className="text-xl font-bold df-text mt-1">{editandoClienteId ? 'Editar Cliente' : 'Registrar Cliente'}</h2>
                 </div>
                 {editandoClienteId && (
-                  <button onClick={() => { setEditandoClienteId(null); setFormCliente(clienteInicial); }} className="p-2 bg-red-500/10 text-red-500 rounded-full hover:bg-red-500/20 cursor-pointer">
+                  <button type="button" onClick={() => { setEditandoClienteId(null); setFormCliente(clienteInicial); }} className="p-2 bg-red-500/10 text-red-500 rounded-full hover:bg-red-500/20 cursor-pointer">
                     <X size={16} />
                   </button>
                 )}
               </div>
+
               <form onSubmit={handleSubmitCliente} className="space-y-4">
                 <input type="text" value={formCliente.nombreCliente} onChange={e => setFormCliente({...formCliente, nombreCliente: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Nombre del Cliente o Evento" />
                 <div className="grid grid-cols-2 gap-3">
@@ -627,9 +857,8 @@ export default function AdminPage() {
                   <input type="text" value={formCliente.fecha} onChange={e => setFormCliente({...formCliente, fecha: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Fecha (Ej. 15 Octubre)" />
                 </div>
                 <input type="url" value={formCliente.driveLink} onChange={e => setFormCliente({...formCliente, driveLink: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="1. Pega aquí el Link de la Carpeta de Google Drive" />
-                <input type="url" value={formCliente.previewImage} onChange={e => setFormCliente({...formCliente, previewImage: e.target.value})} className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="URL Foto de Portada (Opcional: si lo dejas vacío usa la 1ra foto)" />
+                <input type="url" value={formCliente.previewImage} onChange={e => setFormCliente({...formCliente, previewImage: e.target.value})} className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="URL Foto de Portada (Opcional: usa la 1ra foto si queda vacío)" />
 
-                {/* SECCIÓN: ÁLBUM DIGITAL INTERACTIVO */}
                 <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="text-[11px] font-bold uppercase text-amber-600 flex items-center gap-1.5">
@@ -642,21 +871,19 @@ export default function AdminPage() {
                       className="bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
                     >
                       <Sparkles size={12} />
-                      {extrayendoAlbumCliente ? 'Extrayendo fotos...' : 'Extraer fotos del Link de Drive (1 clic)'}
+                      {extrayendoAlbumCliente ? 'Extrayendo...' : 'Extraer de Drive (1 clic)'}
                     </button>
                   </div>
                   <textarea 
                     rows="3"
                     value={formCliente.albumFotosTexto}
                     onChange={e => setFormCliente({...formCliente, albumFotosTexto: e.target.value})}
-                    placeholder={"Toca el botón de arriba para extraer todas las fotos de tu carpeta de Drive automáticamente, o pega aquí un link de carpeta / fotos."}
+                    placeholder="Toca el botón de arriba para extraer todas las fotos automáticamente, o pega aquí links de fotos."
                     className="w-full df-bg border df-border rounded-xl px-3 py-2 text-xs focus:border-amber-600 df-text outline-none resize-y"
                   />
                 </div>
 
-                {/* ====================================================== */}
-                {/* SECCIÓN NUEVA: MÚSICA PERSONALIZADA POR CLIENTE        */}
-                {/* ====================================================== */}
+                {/* MÚSICA POR CLIENTE */}
                 <div className="p-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 space-y-3">
                   <label className="text-[11px] font-bold uppercase text-emerald-500 flex items-center gap-1.5">
                     <Music size={14} /> Música del Álbum para este Cliente
@@ -677,7 +904,7 @@ export default function AdminPage() {
                       type="url"
                       value={formCliente.musicaUrl}
                       onChange={e => setFormCliente({ ...formCliente, musicaUrl: e.target.value })}
-                      placeholder="Pega aquí el link de Google Drive del MP3 o URL directa .mp3"
+                      placeholder="Link de Google Drive del MP3 o URL directa .mp3"
                       className="w-full df-bg border df-border rounded-xl px-3 py-2.5 text-xs focus:border-emerald-500 df-text outline-none"
                     />
                   )}
@@ -687,23 +914,19 @@ export default function AdminPage() {
                       type="text"
                       value={formCliente.musicaTitulo}
                       onChange={e => setFormCliente({ ...formCliente, musicaTitulo: e.target.value })}
-                      placeholder="Nombre visible de la canción (Ej. Perfect - Ed Sheeran Instrumental)"
-                      className="w-full df-bg border df-border rounded-xl px-3 py-2 text-xs focus:border-emerald-500 df-text outline-none"
+                      placeholder="Nombre visible (Ej. Perfect - Instrumental)"
+                      className="w-full df-bg border df-border rounded-xl px-3 py-2.5 text-xs focus:border-emerald-500 df-text outline-none"
                     />
                   )}
 
                   {audioPruebaSrc && (
                     <div className="pt-1 space-y-1">
-                      <span className="text-[10px] font-bold text-emerald-500 block">Vista previa de audio:</span>
+                      <span className="text-[10px] font-bold text-emerald-500 block">Vista previa:</span>
                       <audio key={audioPruebaSrc} controls preload="none" className="w-full h-8">
                         <source src={audioPruebaSrc} type="audio/mpeg" />
                       </audio>
                     </div>
                   )}
-
-                  <p className="text-[10px] df-muted leading-relaxed">
-                    💡 Puedes subir un archivo <strong>.mp3</strong> a tu Google Drive (compartido en <em>&ldquo;Cualquier persona con el enlace&rdquo;</em>) y pegar su link arriba, o guardar pistas base en tu carpeta <code>public/musica/</code>.
-                  </p>
                 </div>
 
                 {/* ENLACES ADICIONALES */}
@@ -739,21 +962,98 @@ export default function AdminPage() {
                   ))}
                 </div>
 
-                <button type="submit" disabled={cargandoCliente} className={`w-full text-white font-bold py-4 rounded-xl shadow-md flex items-center justify-center gap-2 mt-6 text-sm cursor-pointer ${editandoClienteId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
+                <button type="submit" disabled={cargandoCliente} className={`w-full text-white font-bold py-4 rounded-xl shadow-md flex items-center justify-center gap-2 mt-4 text-sm cursor-pointer ${editandoClienteId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
                   {editandoClienteId ? <Edit2 size={18} /> : <PlusCircle size={18} />} {cargandoCliente ? 'Guardando...' : (editandoClienteId ? 'Actualizar Cliente' : 'Registrar Cliente')}
                 </button>
               </form>
             </div>
 
+            {/* LISTA DE CLIENTES */}
+            <div className="lg:col-span-6 df-card border df-border p-6 rounded-3xl shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b df-border">
+                <div>
+                  <h3 className="font-bold df-text text-lg">Clientes Registrados ({clientesFiltrados.length})</h3>
+                  <p className="text-xs df-muted">Gestiona accesos, música y envíos por WhatsApp.</p>
+                </div>
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 df-muted" />
+                  <input 
+                    type="text" 
+                    value={busquedaCliente}
+                    onChange={e => setBusquedaCliente(e.target.value)}
+                    placeholder="Buscar cliente o código..."
+                    className="df-bg border df-border rounded-xl pl-8 pr-3 py-2 text-xs df-text outline-none focus:border-amber-600 w-full sm:w-52"
+                  />
+                </div>
+              </div>
+
+              <div className="max-h-[680px] overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+                {clientesFiltrados.length === 0 && (
+                  <div className="py-12 text-center df-muted text-xs">
+                    {refrescando ? 'Cargando clientes desde Firebase...' : 'No se encontraron clientes.'}
+                  </div>
+                )}
+                {clientesFiltrados.map(cliente => (
+                  <div key={cliente.id} className="flex justify-between items-center p-3.5 df-bg rounded-2xl border df-border hover:border-amber-500/50 transition-colors gap-3">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-11 h-11 rounded-xl overflow-hidden bg-black border df-border flex-shrink-0">
+                        <img
+                          src={normalizarImagenUrl(cliente.previewImage, 120) || '/institucional.jpg'}
+                          alt=""
+                          loading="lazy"
+                          className="w-full h-full object-cover"
+                          onError={(e) => { e.currentTarget.src = '/institucional.jpg'; }}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold df-text truncate">{cliente.nombreCliente}</p>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                          <span className="text-xs df-muted">Pass: <strong className="text-amber-600">{cliente.password}</strong></span>
+                          {Array.isArray(cliente.albumFotos) && cliente.albumFotos.length > 0 && (
+                            <span className="text-[10px] bg-amber-600/10 text-amber-600 px-1.5 py-0.5 rounded font-semibold">
+                              📸 {cliente.albumFotos.length}
+                            </span>
+                          )}
+                          {cliente.musicaUrl && cliente.musicaTipo !== 'ninguna' && (
+                            <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded font-semibold truncate max-w-[110px]">
+                              🎵 {cliente.musicaTitulo || 'MP3'}
+                            </span>
+                          )}
+                          {Array.isArray(cliente.enlacesExtra) && cliente.enlacesExtra.length > 0 && (
+                            <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-semibold">
+                              +{cliente.enlacesExtra.length} links
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button type="button" onClick={() => copiarMensajeCliente(cliente)} className="p-2 bg-amber-500/10 text-amber-600 rounded-lg hover:bg-amber-600 hover:text-white transition-colors cursor-pointer" title="Copiar mensaje"><Copy size={14}/></button>
+                      <a href={obtenerUrlWhatsAppEntrega(cliente)} target="_blank" rel="noopener noreferrer" className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer inline-flex items-center justify-center" title="Enviar por WhatsApp"><Send size={14}/></a>
+                      <button type="button" onClick={() => prepararEdicionCliente(cliente)} className="p-2 bg-blue-500/10 text-blue-500 rounded-lg hover:bg-blue-500 hover:text-white transition-colors cursor-pointer" title="Editar"><Edit2 size={14}/></button>
+                      <button type="button" onClick={() => eliminarCliente(cliente.id)} className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-colors cursor-pointer" title="Eliminar"><Trash2 size={14}/></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ====================================================== */}
+        {/* PESTAÑA 2: PORTAFOLIO WEB Y CARPETAS                   */}
+        {/* ====================================================== */}
+        {tabActiva === 'portafolio' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* FORMULARIO PORTAFOLIO */}
-            <div className="df-card border df-border p-8 rounded-3xl shadow-xl transition-all">
+            <div className="lg:col-span-6 df-card border df-border p-6 sm:p-8 rounded-3xl shadow-xl">
               <div className="mb-6 flex justify-between items-center">
                 <div>
-                  <span className="text-xs uppercase tracking-widest font-bold text-amber-600">Portafolio Web & Carpetas</span>
+                  <span className="text-[11px] uppercase tracking-widest font-bold text-amber-600">Portafolio Web & Carpetas</span>
                   <h2 className="text-xl font-bold df-text mt-1">{editandoFotoId ? 'Editar Contenido' : 'Subir al Portafolio'}</h2>
                 </div>
                 {editandoFotoId && (
-                  <button onClick={() => { setEditandoFotoId(null); setFormGaleria({ ...galeriaInicial, slug: formGaleria.slug }); }} className="p-2 bg-red-500/10 text-red-500 rounded-full hover:bg-red-500/20 cursor-pointer">
+                  <button type="button" onClick={() => { setEditandoFotoId(null); setFormGaleria({ ...galeriaInicial, slug: formGaleria.slug }); }} className="p-2 bg-red-500/10 text-red-500 rounded-full hover:bg-red-500/20 cursor-pointer">
                     <X size={16} />
                   </button>
                 )}
@@ -863,7 +1163,7 @@ export default function AdminPage() {
                       className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-emerald-500 df-text outline-none"
                     />
                     <p className="text-[10px] df-muted leading-relaxed">
-                      ✨ <strong>Automático:</strong> El sistema entrará a tu carpeta de Google Drive, extraerá todas las fotos y las publicará en <strong>{formGaleria.carpeta || '(escribe el nombre arriba)'}</strong>.
+                      ✨ Extrae automáticamente todas las fotos públicas de la carpeta y las agrupa en <strong>{formGaleria.carpeta || '(escribe el nombre arriba)'}</strong>.
                     </p>
                   </div>
                 )}
@@ -931,7 +1231,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <button type="submit" disabled={cargandoGaleria} className={`w-full text-white font-bold py-4 rounded-xl shadow-md flex items-center justify-center gap-2 mt-6 text-sm cursor-pointer ${editandoFotoId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
+                <button type="submit" disabled={cargandoGaleria} className={`w-full text-white font-bold py-4 rounded-xl shadow-md flex items-center justify-center gap-2 mt-4 text-sm cursor-pointer ${editandoFotoId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
                   {editandoFotoId ? <Edit2 size={18} /> : <FolderOpen size={18} />} 
                   {cargandoGaleria 
                     ? 'Extrayendo y subiendo fotos...' 
@@ -943,69 +1243,15 @@ export default function AdminPage() {
                 </button>
               </form>
             </div>
-          </div>
 
-          <div className="space-y-8">
-            {/* LISTA CLIENTES */}
-            <div className="df-card border df-border p-6 rounded-3xl shadow-md">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-                <h3 className="font-bold df-text">Gestión de Clientes ({clientesFiltrados.length})</h3>
-                <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 df-muted" />
-                  <input 
-                    type="text" 
-                    value={busquedaCliente}
-                    onChange={e => setBusquedaCliente(e.target.value)}
-                    placeholder="Buscar cliente o código..."
-                    className="df-bg border df-border rounded-lg pl-8 pr-3 py-1.5 text-xs df-text outline-none focus:border-amber-600 w-full sm:w-48"
-                  />
-                </div>
-              </div>
-
-              <div className="max-h-[380px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-                {clientesFiltrados.length === 0 && <p className="text-xs df-muted">No se encontraron clientes.</p>}
-                {clientesFiltrados.map(cliente => (
-                  <div key={cliente.id} className="flex justify-between items-center p-3 df-bg rounded-xl border df-border group hover:border-amber-500/50 transition-colors gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold df-text truncate">{cliente.nombreCliente}</p>
-                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                        <span className="text-xs df-muted">Pass: <strong className="text-amber-600">{cliente.password}</strong></span>
-                        {Array.isArray(cliente.albumFotos) && cliente.albumFotos.length > 0 && (
-                          <span className="text-[10px] bg-amber-600/10 text-amber-600 px-1.5 py-0.5 rounded font-semibold">
-                            📸 {cliente.albumFotos.length} fotos
-                          </span>
-                        )}
-                        {cliente.musicaUrl && cliente.musicaTipo !== 'ninguna' && (
-                          <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded font-semibold">
-                            🎵 {cliente.musicaTitulo || 'Música'}
-                          </span>
-                        )}
-                        {Array.isArray(cliente.enlacesExtra) && cliente.enlacesExtra.length > 0 && (
-                          <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-semibold">
-                            +{cliente.enlacesExtra.length} links
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button type="button" onClick={() => copiarMensajeCliente(cliente)} className="p-1.5 bg-amber-500/10 text-amber-600 rounded-md hover:bg-amber-600 hover:text-white transition-colors cursor-pointer" title="Copiar mensaje de entrega"><Copy size={14}/></button>
-                      <a href={obtenerUrlWhatsAppEntrega(cliente)} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-md hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer inline-flex items-center justify-center" title="Enviar acceso por WhatsApp"><Send size={14}/></a>
-                      <button type="button" onClick={() => prepararEdicionCliente(cliente)} className="p-1.5 bg-blue-500/10 text-blue-500 rounded-md hover:bg-blue-500 hover:text-white transition-colors cursor-pointer" title="Editar"><Edit2 size={14}/></button>
-                      <button type="button" onClick={() => eliminarCliente(cliente.id)} className="p-1.5 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-colors cursor-pointer" title="Eliminar"><Trash2 size={14}/></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* LISTA GALERÍA PORTAFOLIO */}
-            <div className="df-card border df-border p-6 rounded-3xl shadow-md space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <h3 className="font-bold df-text">Portafolio Web ({galeriaFiltrada.length})</h3>
+            {/* LISTA DEL PORTAFOLIO */}
+            <div className="lg:col-span-6 df-card border df-border p-6 rounded-3xl shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b df-border">
+                <h3 className="font-bold df-text text-lg">Portafolio Web ({galeriaFiltrada.length})</h3>
                 <select 
                   value={filtroCategoria} 
                   onChange={e => setFiltroCategoria(e.target.value)}
-                  className="df-bg border df-border rounded-lg px-3 py-1.5 text-xs df-text outline-none focus:border-amber-600"
+                  className="df-bg border df-border rounded-xl px-3 py-2 text-xs df-text outline-none focus:border-amber-600"
                 >
                   <option value="todas">Todas las categorías</option>
                   <option value="institucional">/institucional</option>
@@ -1023,10 +1269,10 @@ export default function AdminPage() {
                 <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-bold text-amber-600">
-                      Tienes {fotosSueltasEnFiltro.length} fotos sin carpeta en /{filtroCategoria}
+                      {fotosSueltasEnFiltro.length} fotos sin carpeta en /{filtroCategoria}
                     </p>
                     <p className="text-[11px] df-muted">
-                      Agrúpalas en 1 clic bajo el nombre de su institución para no mezclarlas con las nuevas.
+                      Agrúpalas en 1 clic bajo el nombre de su institución.
                     </p>
                   </div>
                   <button
@@ -1034,50 +1280,40 @@ export default function AdminPage() {
                     onClick={() => agruparFotosSueltasEnCarpeta(filtroCategoria)}
                     className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 flex-shrink-0 cursor-pointer shadow-sm"
                   >
-                    <FolderOpen size={14} /> Agrupar en Carpeta
+                    <FolderOpen size={14} /> Agrupar
                   </button>
                 </div>
               )}
 
               {carpetasEnFiltro.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
+                <div className="flex flex-wrap gap-1.5">
                   {carpetasEnFiltro.map(c => (
                     <div key={c} className="inline-flex items-center gap-1.5 text-[11px] df-bg border df-border px-2.5 py-1 rounded-lg">
                       <FolderOpen size={12} className="text-amber-600" />
                       <span className="font-semibold df-text">{c}</span>
-                      <button
-                        type="button"
-                        onClick={() => renombrarCarpetaCompleta(filtroCategoria, c)}
-                        className="text-blue-500 hover:underline ml-1 cursor-pointer"
-                        title="Renombrar esta carpeta"
-                      >
-                        <Edit2 size={11} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => eliminarCarpetaCompleta(filtroCategoria, c)}
-                        className="text-red-500 hover:underline cursor-pointer"
-                        title="Eliminar carpeta completa"
-                      >
-                        <Trash2 size={11} />
-                      </button>
+                      <button type="button" onClick={() => renombrarCarpetaCompleta(filtroCategoria, c)} className="text-blue-500 ml-1 cursor-pointer" title="Renombrar"><Edit2 size={11} /></button>
+                      <button type="button" onClick={() => eliminarCarpetaCompleta(filtroCategoria, c)} className="text-red-500 cursor-pointer" title="Eliminar carpeta"><Trash2 size={11} /></button>
                     </div>
                   ))}
                 </div>
               )}
 
-              <div className="max-h-[420px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-                {galeriaFiltrada.length === 0 && <p className="text-xs df-muted">No hay contenido en esta categoría.</p>}
+              <div className="max-h-[580px] overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+                {galeriaFiltrada.length === 0 && (
+                  <div className="py-12 text-center df-muted text-xs">
+                    {refrescando ? 'Cargando portafolio desde Firebase...' : 'No hay contenido en esta categoría.'}
+                  </div>
+                )}
                 {galeriaFiltrada.map(foto => (
-                  <div key={foto.id} className="flex justify-between items-center p-3 df-bg rounded-xl border df-border group hover:border-amber-500/50 transition-colors">
+                  <div key={foto.id} className="flex justify-between items-center p-3 df-bg rounded-2xl border df-border hover:border-amber-500/50 transition-colors gap-2">
                     <div className="flex items-center gap-3 overflow-hidden w-full">
-                      <div className="w-12 h-12 rounded-lg bg-black overflow-hidden flex-shrink-0 relative border df-border">
+                      <div className="w-12 h-12 rounded-xl bg-black overflow-hidden flex-shrink-0 relative border df-border">
                         <img
                           src={normalizarImagenUrl(foto.imagenUrl, 160)}
                           alt="miniatura"
                           loading="lazy"
                           decoding="async"
-                          className="w-full h-full object-cover opacity-80"
+                          className="w-full h-full object-cover opacity-85"
                         />
                         {foto.videoUrl && <div className="absolute inset-0 flex items-center justify-center"><Video size={14} className="text-white drop-shadow-md"/></div>}
                       </div>
@@ -1086,53 +1322,71 @@ export default function AdminPage() {
                         <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                           <span className="text-[10px] font-bold text-amber-600 tracking-wider">/{foto.slug}</span>
                           {foto.carpeta ? (
-                            <span className="text-[10px] bg-amber-600/15 text-amber-600 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+                            <span className="text-[10px] bg-amber-600/15 text-amber-600 px-2 py-0.5 rounded font-bold">
                               📁 {foto.carpeta}
                             </span>
                           ) : (
                             <span className="text-[10px] df-muted italic">(Sin carpeta)</span>
                           )}
-                          <span className="text-[10px] df-muted">(Orden: {foto.orden})</span>
+                          <span className="text-[10px] df-muted">#{foto.orden}</span>
                         </div>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => prepararEdicionFoto(foto)} className="p-1.5 bg-blue-500/10 text-blue-500 rounded-md hover:bg-blue-500 hover:text-white transition-colors cursor-pointer" title="Editar"><Edit2 size={14}/></button>
-                      <button type="button" onClick={() => eliminarFoto(foto.id)} className="p-1.5 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-colors cursor-pointer" title="Eliminar"><Trash2 size={14}/></button>
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      <button type="button" onClick={() => prepararEdicionFoto(foto)} className="p-2 bg-blue-500/10 text-blue-500 rounded-lg hover:bg-blue-500 hover:text-white transition-colors cursor-pointer" title="Editar"><Edit2 size={14}/></button>
+                      <button type="button" onClick={() => eliminarFoto(foto.id)} className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-colors cursor-pointer" title="Eliminar"><Trash2 size={14}/></button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-
-            {/* LISTA DE RESEÑAS / TESTIMONIOS DE CLIENTES */}
-            <div className="df-card border df-border p-6 rounded-3xl shadow-md">
-              <h3 className="font-bold df-text mb-4 flex items-center gap-2">
-                <Star size={16} className="text-amber-500" fill="currentColor" /> Reseñas de Clientes ({listaTestimonios.length})
-              </h3>
-              <div className="max-h-[280px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-                {listaTestimonios.length === 0 && <p className="text-xs df-muted">Aún no hay reseñas registradas.</p>}
-                {listaTestimonios.map(item => (
-                  <div key={item.id} className="p-3 df-bg rounded-xl border df-border flex justify-between items-start gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs font-bold df-text">{item.nombreCliente}</p>
-                        <span className="text-[10px] text-amber-500">{'★'.repeat(item.estrellas || 5)}</span>
-                      </div>
-                      <p className="text-xs df-muted mt-1 italic">&ldquo;{item.comentario}&rdquo;</p>
-                      <p className="text-[10px] df-muted mt-1">{item.evento} • {item.fecha}</p>
-                    </div>
-                    <button type="button" onClick={() => eliminarTestimonio(item.id)} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
           </div>
-        </div>
-      </div>
+        )}
+
+        {/* ====================================================== */}
+        {/* PESTAÑA 3: RESEÑAS / TESTIMONIOS DE CLIENTES           */}
+        {/* ====================================================== */}
+        {tabActiva === 'resenas' && (
+          <div className="df-card border df-border p-6 sm:p-8 rounded-3xl shadow-xl space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b df-border">
+              <div>
+                <h2 className="text-xl font-bold df-text flex items-center gap-2">
+                  <Star size={18} className="text-amber-500" fill="currentColor" /> Reseñas de Clientes ({listaTestimonios.length})
+                </h2>
+                <p className="text-xs df-muted mt-0.5">
+                  Las reseñas que tus clientes envían desde /clientes aparecen aquí y automáticamente en tu portada principal.
+                </p>
+              </div>
+            </div>
+
+            {listaTestimonios.length === 0 ? (
+              <div className="py-12 text-center df-muted text-sm">
+                Aún no hay reseñas registradas.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {listaTestimonios.map(item => (
+                  <div key={item.id} className="p-5 df-bg rounded-2xl border df-border flex flex-col justify-between gap-4">
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="text-amber-500 text-xs">{'★'.repeat(item.estrellas || 5)}</span>
+                        <button type="button" onClick={() => eliminarTestimonio(item.id)} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg cursor-pointer" title="Eliminar reseña">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      <p className="text-xs df-text italic leading-relaxed">&ldquo;{item.comentario}&rdquo;</p>
+                    </div>
+                    <div className="pt-3 border-t df-border">
+                      <p className="text-xs font-bold df-text">{item.nombreCliente}</p>
+                      <p className="text-[10px] df-muted">{item.evento} • {item.fecha}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </main>
     </div>
   );
 }
