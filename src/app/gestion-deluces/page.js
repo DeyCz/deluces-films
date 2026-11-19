@@ -7,16 +7,46 @@ import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebas
 import { 
   ShieldCheck, PlusCircle, ArrowLeft, Image as ImageIcon, 
   Trash2, Edit2, X, RefreshCw, Video, LogOut, Copy, Send, 
-  Search, Plus, BookOpen, Star, FolderOpen, Layers, Sparkles
+  Search, Plus, BookOpen, Star, FolderOpen, Layers, Sparkles, Music
 } from 'lucide-react';
 import Link from 'next/link';
 
-const normalizarImagenUrl = (url) => {
+const PRESETS_MUSICA = [
+  { id: 'ambiental', label: 'Piano Ambiental (Incluida por defecto)', url: '', titulo: 'Piano Ambiental' },
+  { id: 'romantica', label: 'Romántica / Parejas (/musica/romantica.mp3)', url: '/musica/romantica.mp3', titulo: 'Melodía Romántica' },
+  { id: 'promocion', label: 'Promoción Escolar (/musica/promocion.mp3)', url: '/musica/promocion.mp3', titulo: 'Recuerdos de Promoción' },
+  { id: 'quinceanera', label: '15 Años / Vals (/musica/quinceanera.mp3)', url: '/musica/quinceanera.mp3', titulo: 'Vals de 15 Años' },
+  { id: 'fiesta', label: 'Fiesta Patronal (/musica/fiesta.mp3)', url: '/musica/fiesta.mp3', titulo: 'Ambiente Festivo' },
+  { id: 'cinematica', label: 'Cinemática / Institucional (/musica/cinematica.mp3)', url: '/musica/cinematica.mp3', titulo: 'Instrumental Cinemático' },
+  { id: 'personalizada', label: 'Canción personalizada (Link MP3 o Google Drive)', url: '', titulo: '' },
+  { id: 'ninguna', label: 'Sin música de fondo', url: '', titulo: '' },
+];
+
+const normalizarImagenUrl = (url, ancho = 1600) => {
   if (!url) return '';
   const limpia = url.trim();
   if (limpia.includes('drive.google.com/file/d/')) {
     const fileId = limpia.split('/d/')[1]?.split('/')[0];
-    if (fileId) return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`;
+    if (fileId) return `https://drive.google.com/thumbnail?id=${fileId}&sz=w${ancho}`;
+  }
+  if (limpia.includes('drive.google.com/thumbnail?id=')) {
+    const fileId = limpia.split('id=')[1]?.split('&')[0];
+    if (fileId) return `https://drive.google.com/thumbnail?id=${fileId}&sz=w${ancho}`;
+  }
+  return limpia;
+};
+
+const obtenerSrcPruebaAudio = (tipo, url) => {
+  if (tipo === 'ninguna' || tipo === 'ambiental') return null;
+  const limpia = (url || '').trim();
+  if (!limpia) return null;
+  if (limpia.includes('drive.google.com/file/d/')) {
+    const id = limpia.split('/d/')[1]?.split('/')[0];
+    if (id) return `/api/audio?id=${id}`;
+  }
+  if (limpia.includes('drive.google.com') && limpia.includes('id=')) {
+    const id = limpia.split('id=')[1]?.split('&')[0];
+    if (id) return `/api/audio?id=${id}`;
   }
   return limpia;
 };
@@ -51,7 +81,10 @@ export default function AdminPage() {
     previewImage: '', 
     driveLink: '',
     enlacesExtra: [],
-    albumFotosTexto: ''
+    albumFotosTexto: '',
+    musicaTipo: 'ambiental',
+    musicaUrl: '',
+    musicaTitulo: ''
   };
   const [formCliente, setFormCliente] = useState(clienteInicial);
   const [cargandoCliente, setCargandoCliente] = useState(false);
@@ -61,7 +94,6 @@ export default function AdminPage() {
   const [busquedaCliente, setBusquedaCliente] = useState('');
 
   // ESTADOS GALERÍA PORTAFOLIO
-  // modoSubida: 'carpetaDrive' (1 solo link de carpeta) | 'individual' (1 foto/video) | 'lote' (varios links)
   const galeriaInicial = { 
     slug: 'institucional', 
     carpeta: '', 
@@ -94,20 +126,24 @@ export default function AdminPage() {
   const cargarDatos = async () => {
     setRefrescando(true);
     try {
-      const clientesSnapshot = await getDocs(collection(db, "clientes"));
-      setListaClientes(clientesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const [clientesSnapshot, galeriaSnapshot, testimoniosSnapshot] = await Promise.all([
+        getDocs(collection(db, "clientes")),
+        getDocs(collection(db, "galerias")),
+        getDocs(collection(db, "testimonios")),
+      ]);
 
-      const galeriaSnapshot = await getDocs(collection(db, "galerias"));
-      let fotosCargadas = galeriaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      fotosCargadas.sort((a, b) => Number(a.orden) - Number(b.orden));
+      setListaClientes(clientesSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      const fotosCargadas = galeriaSnapshot.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => Number(a.orden) - Number(b.orden));
       setListaGaleria(fotosCargadas);
 
-      const testimoniosSnapshot = await getDocs(collection(db, "testimonios"));
-      setListaTestimonios(testimoniosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setListaTestimonios(testimoniosSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (error) {
       console.error("Error al cargar datos:", error);
     } finally {
-      setTimeout(() => setRefrescando(false), 500); 
+      setTimeout(() => setRefrescando(false), 400); 
     }
   };
 
@@ -144,9 +180,6 @@ export default function AdminPage() {
     await signOut(auth);
   };
 
-  // ==========================================================
-  // FUNCIÓN MÁGICA: EXTRAER FOTOS DESDE 1 LINK DE CARPETA DRIVE
-  // ==========================================================
   const extraerArchivosDeCarpetaDrive = async (folderUrl) => {
     const res = await fetch('/api/drive-folder', {
       method: 'POST',
@@ -160,7 +193,6 @@ export default function AdminPage() {
     return data.archivos;
   };
 
-  // Extraer fotos de la carpeta del cliente hacia su Álbum Digital en 1 clic
   const importarCarpetaAlAlbumCliente = async () => {
     const urlAExtraer = formCliente.driveLink.trim();
     if (!urlAExtraer || !urlAExtraer.includes('/folders/')) {
@@ -179,7 +211,6 @@ export default function AdminPage() {
 
       setFormCliente(prev => ({
         ...prev,
-        // Si aún no puso foto de portada, usa automáticamente la primera foto de la carpeta
         previewImage: prev.previewImage || soloFotos[0],
         albumFotosTexto: soloFotos.join('\n')
       }));
@@ -189,6 +220,27 @@ export default function AdminPage() {
       alert(err.message);
     } finally {
       setExtrayendoAlbumCliente(false);
+    }
+  };
+
+  const handleCambiarTipoMusica = (nuevoTipo) => {
+    const preset = PRESETS_MUSICA.find(p => p.id === nuevoTipo);
+    if (!preset) return;
+
+    if (nuevoTipo === 'personalizada') {
+      setFormCliente(prev => ({
+        ...prev,
+        musicaTipo: 'personalizada',
+        musicaUrl: prev.musicaTipo === 'personalizada' ? prev.musicaUrl : '',
+        musicaTitulo: prev.musicaTipo === 'personalizada' ? prev.musicaTitulo : '',
+      }));
+    } else {
+      setFormCliente(prev => ({
+        ...prev,
+        musicaTipo: nuevoTipo,
+        musicaUrl: preset.url,
+        musicaTitulo: preset.titulo,
+      }));
     }
   };
 
@@ -216,7 +268,6 @@ export default function AdminPage() {
     try {
       let textoAlbum = formCliente.albumFotosTexto || '';
 
-      // Si el usuario pegó un link de carpeta de Drive dentro de la caja del álbum, lo expandimos automáticamente
       if (textoAlbum.trim().includes('drive.google.com/drive/folders/') && textoAlbum.trim().split('\n').length === 1) {
         const archivos = await extraerArchivosDeCarpetaDrive(textoAlbum.trim());
         textoAlbum = archivos.filter(a => !a.esVideo).map(a => a.imagenUrl).join('\n');
@@ -238,12 +289,15 @@ export default function AdminPage() {
         previewImage: portadaFinal,
         driveLink: formCliente.driveLink.trim(),
         enlacesExtra: (formCliente.enlacesExtra || []).filter(item => item.url?.trim() !== ''),
-        albumFotos: listaFotosAlbum
+        albumFotos: listaFotosAlbum,
+        musicaTipo: formCliente.musicaTipo || 'ambiental',
+        musicaUrl: (formCliente.musicaUrl || '').trim(),
+        musicaTitulo: (formCliente.musicaTitulo || '').trim(),
       };
 
       if (editandoClienteId) {
         await updateDoc(doc(db, "clientes", editandoClienteId), datosLimpios);
-        alert('¡Cliente y Álbum Digital actualizados correctamente!');
+        alert('¡Cliente, Álbum Digital y Música actualizados correctamente!');
         setEditandoClienteId(null);
       } else {
         await addDoc(collection(db, "clientes"), { ...datosLimpios, createdAt: new Date() });
@@ -274,12 +328,16 @@ export default function AdminPage() {
 
   const prepararEdicionCliente = (cliente) => {
     setEditandoClienteId(cliente.id);
+    const tipoGuardado = cliente.musicaTipo || (cliente.musicaUrl ? 'personalizada' : 'ambiental');
     setFormCliente({
       ...clienteInicial,
       ...cliente,
       telefonoCliente: cliente.telefonoCliente || '',
       enlacesExtra: Array.isArray(cliente.enlacesExtra) ? cliente.enlacesExtra : [],
-      albumFotosTexto: Array.isArray(cliente.albumFotos) ? cliente.albumFotos.join('\n') : ''
+      albumFotosTexto: Array.isArray(cliente.albumFotos) ? cliente.albumFotos.join('\n') : '',
+      musicaTipo: tipoGuardado,
+      musicaUrl: cliente.musicaUrl || '',
+      musicaTitulo: cliente.musicaTitulo || '',
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -300,7 +358,6 @@ export default function AdminPage() {
       const carpetaLimpia = (formGaleria.carpeta || '').trim();
       const ordenBase = Number(formGaleria.orden) || 1;
 
-      // MODO 1: SUBIR CON UN SOLO LINK DE CARPETA DE GOOGLE DRIVE
       if (!editandoFotoId && formGaleria.modoSubida === 'carpetaDrive') {
         if (!carpetaLimpia) {
           alert('Por favor escribe el nombre de la Institución / Asociación en el campo Carpeta.');
@@ -327,7 +384,6 @@ export default function AdminPage() {
         );
         alert(`¡Espectacular! Se importaron automáticamente ${archivos.length} archivos desde la carpeta de Drive hacia "${carpetaLimpia}".`);
       } 
-      // MODO 2: SUBIR LOTE DE ENLACES SUELTOS
       else if (!editandoFotoId && formGaleria.modoSubida === 'lote') {
         const urls = (formGaleria.loteImagenesTexto || '')
           .split('\n')
@@ -356,7 +412,6 @@ export default function AdminPage() {
         );
         alert(`¡${urls.length} fotografías agregadas a la carpeta "${carpetaLimpia || formGaleria.slug}"!`);
       } 
-      // MODO 3: SUBIR O EDITAR 1 FOTO / VIDEO INDIVIDUAL
       else {
         const cleanVideoUrl = formGaleria.videoUrl?.trim() || "";
         const dataToSave = { 
@@ -394,7 +449,6 @@ export default function AdminPage() {
     }
   };
 
-  // Agrupar fotos sueltas en 1 clic
   const agruparFotosSueltasEnCarpeta = async (slugCategoria) => {
     const fotosSueltas = listaGaleria.filter(
       f => f.slug === slugCategoria && (!f.carpeta || f.carpeta.trim() === '')
@@ -446,7 +500,6 @@ export default function AdminPage() {
     }
   };
 
-  // Borrar una carpeta completa del portafolio si te equivocaste
   const eliminarCarpetaCompleta = async (slugCategoria, nombreCarpeta) => {
     const fotosDeCarpeta = listaGaleria.filter(
       f => f.slug === slugCategoria && (f.carpeta || '').trim() === nombreCarpeta
@@ -523,6 +576,8 @@ export default function AdminPage() {
     ? [...new Set(galeriaFiltrada.filter(f => f.carpeta && f.carpeta.trim() !== '').map(f => f.carpeta.trim()))]
     : [];
 
+  const audioPruebaSrc = obtenerSrcPruebaAudio(formCliente.musicaTipo, formCliente.musicaUrl);
+
   return (
     <div className="min-h-screen df-bg py-16 px-6">
       <div className="max-w-5xl mx-auto space-y-12">
@@ -548,7 +603,7 @@ export default function AdminPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="space-y-8">
             
-            {/* FORMULARIO CLIENTES + EXTRACCIÓN 1-CLIC DE CARPETA DRIVE */}
+            {/* FORMULARIO CLIENTES + ÁLBUM + MÚSICA PERSONALIZADA */}
             <div className="df-card border df-border p-8 rounded-3xl shadow-xl transition-all">
               <div className="mb-6 flex justify-between items-center">
                 <div>
@@ -574,6 +629,7 @@ export default function AdminPage() {
                 <input type="url" value={formCliente.driveLink} onChange={e => setFormCliente({...formCliente, driveLink: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="1. Pega aquí el Link de la Carpeta de Google Drive" />
                 <input type="url" value={formCliente.previewImage} onChange={e => setFormCliente({...formCliente, previewImage: e.target.value})} className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="URL Foto de Portada (Opcional: si lo dejas vacío usa la 1ra foto)" />
 
+                {/* SECCIÓN: ÁLBUM DIGITAL INTERACTIVO */}
                 <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="text-[11px] font-bold uppercase text-amber-600 flex items-center gap-1.5">
@@ -598,6 +654,59 @@ export default function AdminPage() {
                   />
                 </div>
 
+                {/* ====================================================== */}
+                {/* SECCIÓN NUEVA: MÚSICA PERSONALIZADA POR CLIENTE        */}
+                {/* ====================================================== */}
+                <div className="p-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 space-y-3">
+                  <label className="text-[11px] font-bold uppercase text-emerald-500 flex items-center gap-1.5">
+                    <Music size={14} /> Música del Álbum para este Cliente
+                  </label>
+
+                  <select
+                    value={formCliente.musicaTipo}
+                    onChange={e => handleCambiarTipoMusica(e.target.value)}
+                    className="w-full df-bg border df-border rounded-xl px-3 py-2.5 text-xs df-text outline-none focus:border-emerald-500 cursor-pointer"
+                  >
+                    {PRESETS_MUSICA.map(p => (
+                      <option key={p.id} value={p.id}>{p.label}</option>
+                    ))}
+                  </select>
+
+                  {formCliente.musicaTipo === 'personalizada' && (
+                    <input
+                      type="url"
+                      value={formCliente.musicaUrl}
+                      onChange={e => setFormCliente({ ...formCliente, musicaUrl: e.target.value })}
+                      placeholder="Pega aquí el link de Google Drive del MP3 o URL directa .mp3"
+                      className="w-full df-bg border df-border rounded-xl px-3 py-2.5 text-xs focus:border-emerald-500 df-text outline-none"
+                    />
+                  )}
+
+                  {formCliente.musicaTipo !== 'ninguna' && (
+                    <input
+                      type="text"
+                      value={formCliente.musicaTitulo}
+                      onChange={e => setFormCliente({ ...formCliente, musicaTitulo: e.target.value })}
+                      placeholder="Nombre visible de la canción (Ej. Perfect - Ed Sheeran Instrumental)"
+                      className="w-full df-bg border df-border rounded-xl px-3 py-2 text-xs focus:border-emerald-500 df-text outline-none"
+                    />
+                  )}
+
+                  {audioPruebaSrc && (
+                    <div className="pt-1 space-y-1">
+                      <span className="text-[10px] font-bold text-emerald-500 block">Vista previa de audio:</span>
+                      <audio key={audioPruebaSrc} controls preload="none" className="w-full h-8">
+                        <source src={audioPruebaSrc} type="audio/mpeg" />
+                      </audio>
+                    </div>
+                  )}
+
+                  <p className="text-[10px] df-muted leading-relaxed">
+                    💡 Puedes subir un archivo <strong>.mp3</strong> a tu Google Drive (compartido en <em>&ldquo;Cualquier persona con el enlace&rdquo;</em>) y pegar su link arriba, o guardar pistas base en tu carpeta <code>public/musica/</code>.
+                  </p>
+                </div>
+
+                {/* ENLACES ADICIONALES */}
                 <div className="pt-1 space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[11px] font-bold uppercase tracking-wider df-muted">Videos o Carpetas Adicionales</span>
@@ -636,9 +745,7 @@ export default function AdminPage() {
               </form>
             </div>
 
-            {/* ========================================================== */}
-            {/* FORMULARIO PORTAFOLIO (CON SUBIDA DE 1 LINK DE CARPETA)    */}
-            {/* ========================================================== */}
+            {/* FORMULARIO PORTAFOLIO */}
             <div className="df-card border df-border p-8 rounded-3xl shadow-xl transition-all">
               <div className="mb-6 flex justify-between items-center">
                 <div>
@@ -675,7 +782,6 @@ export default function AdminPage() {
                   </select>
                 </div>
 
-                {/* CAMPO DE CARPETA / INSTITUCIÓN */}
                 <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-2.5">
                   <label className="text-[11px] font-bold uppercase text-amber-600 flex items-center gap-1.5">
                     <FolderOpen size={14} /> 2. Nombre de la Carpeta / Institución
@@ -711,7 +817,6 @@ export default function AdminPage() {
                   )}
                 </div>
 
-                {/* SELECTOR DE MODO: 1 LINK DE CARPETA DRIVE VS 1 FOTO/VIDEO VS LOTE */}
                 {!editandoFotoId && (
                   <div className="grid grid-cols-3 gap-2 pt-1">
                     <button
@@ -744,7 +849,6 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* MODO A: SUBIR CON UN SOLO LINK DE CARPETA DE DRIVE */}
                 {!editandoFotoId && formGaleria.modoSubida === 'carpetaDrive' && (
                   <div className="p-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 space-y-3">
                     <label className="text-[11px] font-bold uppercase text-emerald-500 flex items-center gap-1.5">
@@ -759,12 +863,11 @@ export default function AdminPage() {
                       className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-emerald-500 df-text outline-none"
                     />
                     <p className="text-[10px] df-muted leading-relaxed">
-                      ✨ <strong>Automático:</strong> El sistema entrará a tu carpeta de Google Drive, extraerá todas las fotos que estén adentro y las publicará en la carpeta <strong>{formGaleria.carpeta || '(escribe el nombre arriba)'}</strong>. <em>(Asegúrate de que la carpeta de Drive esté en "Cualquier persona con el enlace").</em>
+                      ✨ <strong>Automático:</strong> El sistema entrará a tu carpeta de Google Drive, extraerá todas las fotos y las publicará en <strong>{formGaleria.carpeta || '(escribe el nombre arriba)'}</strong>.
                     </p>
                   </div>
                 )}
 
-                {/* MODO B: VARIOS LINKS POR LOTE */}
                 {!editandoFotoId && formGaleria.modoSubida === 'lote' && (
                   <div>
                     <label className="text-[10px] font-bold uppercase text-amber-600 ml-1 flex items-center gap-1 mb-1">
@@ -781,7 +884,6 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* MODO C: 1 FOTO O VIDEO INDIVIDUAL */}
                 {(editandoFotoId || formGaleria.modoSubida === 'individual') && (
                   <>
                     <div>
@@ -873,6 +975,11 @@ export default function AdminPage() {
                             📸 {cliente.albumFotos.length} fotos
                           </span>
                         )}
+                        {cliente.musicaUrl && cliente.musicaTipo !== 'ninguna' && (
+                          <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded font-semibold">
+                            🎵 {cliente.musicaTitulo || 'Música'}
+                          </span>
+                        )}
                         {Array.isArray(cliente.enlacesExtra) && cliente.enlacesExtra.length > 0 && (
                           <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-semibold">
                             +{cliente.enlacesExtra.length} links
@@ -891,7 +998,7 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* LISTA GALERÍA PORTAFOLIO + GESTOR RÁPIDO DE CARPETAS */}
+            {/* LISTA GALERÍA PORTAFOLIO */}
             <div className="df-card border df-border p-6 rounded-3xl shadow-md space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <h3 className="font-bold df-text">Portafolio Web ({galeriaFiltrada.length})</h3>
@@ -965,7 +1072,13 @@ export default function AdminPage() {
                   <div key={foto.id} className="flex justify-between items-center p-3 df-bg rounded-xl border df-border group hover:border-amber-500/50 transition-colors">
                     <div className="flex items-center gap-3 overflow-hidden w-full">
                       <div className="w-12 h-12 rounded-lg bg-black overflow-hidden flex-shrink-0 relative border df-border">
-                        <img src={normalizarImagenUrl(foto.imagenUrl)} alt="miniatura" className="w-full h-full object-cover opacity-80" />
+                        <img
+                          src={normalizarImagenUrl(foto.imagenUrl, 160)}
+                          alt="miniatura"
+                          loading="lazy"
+                          decoding="async"
+                          className="w-full h-full object-cover opacity-80"
+                        />
                         {foto.videoUrl && <div className="absolute inset-0 flex items-center justify-center"><Video size={14} className="text-white drop-shadow-md"/></div>}
                       </div>
                       <div className="flex-1 pr-2 min-w-0">
@@ -1006,7 +1119,7 @@ export default function AdminPage() {
                         <p className="text-xs font-bold df-text">{item.nombreCliente}</p>
                         <span className="text-[10px] text-amber-500">{'★'.repeat(item.estrellas || 5)}</span>
                       </div>
-                      <p className="text-xs df-muted mt-1 italic">"{item.comentario}"</p>
+                      <p className="text-xs df-muted mt-1 italic">&ldquo;{item.comentario}&rdquo;</p>
                       <p className="text-[10px] df-muted mt-1">{item.evento} • {item.fecha}</p>
                     </div>
                     <button type="button" onClick={() => eliminarTestimonio(item.id)} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer">

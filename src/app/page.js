@@ -2,13 +2,15 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Camera, Video, Film, CheckCircle2, MapPin, Mail, 
+  Camera, Film, CheckCircle2, MapPin, Mail, 
   Smartphone, Send, Menu, X, ArrowRight, ArrowUp, 
-  ChevronDown, Sun, Moon, Clapperboard, Lock
+  ChevronDown, Sun, Moon, Clapperboard, Lock, Star, Quote
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
+import { db } from '@/lib/firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 // ==========================================
 // COMPONENTE DE TARJETA 3D
@@ -52,24 +54,20 @@ function CategoryCard({ trabajo }) {
       onMouseLeave={handleMouseLeave}
       className="card-3d-spotlight group relative w-full h-[320px] df-card rounded-3xl overflow-hidden border df-border shadow-sm cursor-pointer flex flex-col justify-end p-6 transition-all duration-300 block"
     >
-      {/* 1. Imagen de fondo principal OPTIMIZADA con Fallback seguro */}
       <Image 
         src={imgSrc} 
         alt={trabajo.titulo} 
         fill
+        quality={75}
         sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
         className="object-cover transition-transform duration-700 group-hover:scale-110 z-0"
         priority={trabajo.id <= 3}
         onError={() => setImgSrc('/institucional.jpg')}
       />
 
-      {/* 2. Gradiente inferior para legibilidad del texto */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none" />
-
-      {/* 3. Capa de color acentuado */}
       <div className={`absolute inset-0 ${trabajo.accent || 'bg-amber-600'} opacity-20 group-hover:opacity-10 transition-all duration-700 ease-out z-10 pointer-events-none`} />
 
-      {/* 4. Efecto Spotlight del cursor */}
       <div 
         className="absolute inset-0 pointer-events-none opacity-0 md:group-hover:opacity-100 transition-opacity duration-300 z-10"
         style={{
@@ -77,12 +75,10 @@ function CategoryCard({ trabajo }) {
         }}
       />
 
-      {/* 5. Botón flotante */}
       <div className="absolute top-4 right-4 w-10 h-10 bg-white/20 md:bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm transform md:translate-y-2 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 transition-all duration-300 z-20">
         <ArrowRight size={18} />
       </div>
 
-      {/* 6. Textos */}
       <div className="relative z-20">
         <span className="text-[10px] uppercase tracking-wider font-bold text-amber-400 bg-amber-500/20 px-2.5 py-1 rounded-md border border-amber-500/30 backdrop-blur-md">
           {trabajo.categoria}
@@ -223,20 +219,39 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
+  // Testimonios reales desde Firebase
+  const [testimonios, setTestimonios] = useState([]);
+
   // Estados del Formulario
   const [nombre, setNombre] = useState('');
   const [tipoEvento, setTipoEvento] = useState('');
   const [mensaje, setMensaje] = useState('');
 
-  // Efecto de inicialización de Tema Oscuro
+  // Inicialización de Tema Oscuro + Carga diferida de Testimonios
   useEffect(() => {
     setMounted(true);
     const savedTheme = localStorage.getItem('isDarkMode') === 'true';
     setIsDarkMode(savedTheme);
     document.documentElement.classList.toggle('dark', savedTheme);
+
+    const cargarTestimonios = async () => {
+      try {
+        const snap = await getDocs(collection(db, "testimonios"));
+        const lista = snap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(t => t.comentario && t.comentario.trim() !== '')
+          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+          .slice(0, 9);
+        setTestimonios(lista);
+      } catch (err) {
+        console.error("Error cargando testimonios:", err);
+      }
+    };
+
+    cargarTestimonios();
   }, []);
 
-  // Efecto para aplicar clases del Tema
+  // Aplicar clases del Tema
   useEffect(() => {
     if (!mounted) return;
     if (isDarkMode) {
@@ -250,16 +265,16 @@ export default function Home() {
     }
   }, [isDarkMode, mounted]);
 
-  // Manejo de Scroll para el botón "Volver arriba"
+  // Manejo optimizado de Scroll (passive: true y sin re-renders extra)
   useEffect(() => {
     const handleScroll = () => {
-      setShowTopBtn(window.scrollY > 400);
+      const shouldShow = window.scrollY > 400;
+      setShowTopBtn(prev => (prev !== shouldShow ? shouldShow : prev));
     };
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Funciones de navegación fluida
   const scrollToSection = (e, targetId) => {
     if (e) e.preventDefault();
     setMenuAbierto(false);
@@ -270,7 +285,7 @@ export default function Home() {
     const targetPosition = targetElement.getBoundingClientRect().top + window.pageYOffset;
     const startPosition = window.pageYOffset;
     const distance = targetPosition - startPosition; 
-    const duration = 900; 
+    const duration = 800; 
     let startTime = null;
 
     const ease = (t, b, c, d) => {
@@ -291,7 +306,6 @@ export default function Home() {
     requestAnimationFrame(animation);
   };
 
-  // Seleccionar un plan de precios y llevar al formulario
   const seleccionarPlan = (nombrePlan, precioPlan) => {
     if (!tipoEvento) setTipoEvento('Eventos Sociales / 15 Años / Cumpleaños');
     setMensaje(`Me interesa cotizar el Plan ${nombrePlan} (desde ${precioPlan}). La fecha y lugar aproximados de mi evento son: `);
@@ -307,14 +321,17 @@ export default function Home() {
   const toggleFaq = (index) => setFaqAbierto(faqAbierto === index ? null : index);
   const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
 
-  // Envío del Formulario a WhatsApp
   const handleWhatsAppSubmit = (e) => {
     e.preventDefault();
     const numeroWhatsApp = '51967576214';
     const texto = `Hola Deluces Films ✨, mi nombre es *${nombre}*.\nMe interesa cotizar un servicio de: *${tipoEvento}*.\n\nDetalles: ${mensaje}`;
-    const url = `https://wa.me/${numeroWhatsApp}?text=${encodeURIComponent(texto)}`;
+    const url = `https://api.whatsapp.com/send?phone=${numeroWhatsApp}&text=${encodeURIComponent(texto)}`;
     window.open(url, '_blank');
   };
+
+  const promedioEstrellas = testimonios.length > 0
+    ? (testimonios.reduce((acc, item) => acc + (Number(item.estrellas) || 5), 0) / testimonios.length).toFixed(1)
+    : '5.0';
 
   return (
     <div className="min-h-screen df-text selection:bg-amber-600 selection:text-white font-sans overflow-x-hidden relative">
@@ -324,13 +341,14 @@ export default function Home() {
         <nav className="fixed w-full top-0 z-50 df-bg/90 backdrop-blur-md border-b df-border py-4 px-6 md:px-12 flex justify-between items-center transition-all shadow-xs">
           <Link href="/" onClick={goToTop} className="font-bold tracking-wider text-lg df-text flex items-center gap-2 cursor-pointer">
             <span className="w-2.5 h-2.5 bg-amber-600 rounded-full animate-pulse"></span>
-            {mounted && (
-              <img 
-                src="/Logo Cam.png" 
-                alt="Deluces Films" 
-                className="h-7 md:h-8 w-auto object-contain"
-              />
-            )}
+            <img 
+              src="/Logo Cam.png" 
+              alt="Deluces Films" 
+              width={120}
+              height={32}
+              decoding="async"
+              className="h-7 md:h-8 w-auto object-contain"
+            />
           </Link>
           
           <div className="hidden md:flex gap-8 text-sm items-center">
@@ -338,6 +356,9 @@ export default function Home() {
             <a href="#portafolio" onClick={(e) => scrollToSection(e, '#portafolio')} className="nav-link cursor-pointer">Portafolio</a>
             <a href="#proceso" onClick={(e) => scrollToSection(e, '#proceso')} className="nav-link cursor-pointer">Proceso</a>
             <a href="#precios" onClick={(e) => scrollToSection(e, '#precios')} className="nav-link cursor-pointer">Precios</a>
+            {testimonios.length > 0 && (
+              <a href="#testimonios" onClick={(e) => scrollToSection(e, '#testimonios')} className="nav-link cursor-pointer">Reseñas</a>
+            )}
             <a href="#faq" onClick={(e) => scrollToSection(e, '#faq')} className="nav-link cursor-pointer">FAQ</a>
             <Link href="/clientes" className="nav-link cursor-pointer text-amber-600 font-semibold">Clientes</Link>
             
@@ -381,6 +402,9 @@ export default function Home() {
             <a href="#portafolio" onClick={(e) => scrollToSection(e, '#portafolio')} className="text-xl font-bold df-text border-b df-border pb-3 cursor-pointer">Portafolio</a>
             <a href="#proceso" onClick={(e) => scrollToSection(e, '#proceso')} className="text-xl font-bold df-text border-b df-border pb-3 cursor-pointer">Proceso</a>
             <a href="#precios" onClick={(e) => scrollToSection(e, '#precios')} className="text-xl font-bold df-text border-b df-border pb-3 cursor-pointer">Precios</a>
+            {testimonios.length > 0 && (
+              <a href="#testimonios" onClick={(e) => scrollToSection(e, '#testimonios')} className="text-xl font-bold df-text border-b df-border pb-3 cursor-pointer">Reseñas</a>
+            )}
             <a href="#faq" onClick={(e) => scrollToSection(e, '#faq')} className="text-xl font-bold df-text border-b df-border pb-3 cursor-pointer">FAQ</a>
             <Link href="/clientes" onClick={() => setMenuAbierto(false)} className="text-xl font-bold text-amber-600 border-b df-border pb-3 cursor-pointer">Área de Clientes</Link>
             <a href="#contacto" onClick={(e) => scrollToSection(e, '#contacto')} className="btn-shimmer text-center text-white py-3.5 rounded-xl font-bold mt-4 shadow-md cursor-pointer">Cotizar evento</a>
@@ -400,19 +424,21 @@ export default function Home() {
               <span className="w-10 h-[1.5px] bg-amber-600 transition-all duration-500 hover:w-16"></span>
             </p>
 
-            <div className="mb-8 w-80 md:w-[480px] lg:w-[540px] relative group transition-all duration-700 mx-auto">
+            <div className="mb-8 w-80 md:w-[480px] lg:w-[540px] min-h-[110px] md:min-h-[160px] flex items-center justify-center relative group transition-all duration-700 mx-auto">
               <div className="absolute inset-0 bg-amber-600/10 rounded-full blur-3xl pointer-events-none -z-10 group-hover:bg-amber-600/20 transition-all duration-700"></div>
-              {mounted && (
-                <img 
-                  src={isDarkMode ? "/LOGO 2026 N.png" : "/LOGO 2026 B.png"} 
-                  alt="Deluces Films" 
-                  className="w-full h-auto object-contain drop-shadow-lg transition-transform duration-700 hover:scale-105"
-                />
-              )}
+              <img 
+                src={mounted && isDarkMode ? "/LOGO 2026 N.png" : "/LOGO 2026 B.png"} 
+                alt="Deluces Films" 
+                fetchPriority="high"
+                decoding="async"
+                className="w-full h-auto object-contain drop-shadow-lg transition-transform duration-700 hover:scale-105"
+              />
             </div>
 
+            <h1 className="sr-only">Deluces Films - Fotografía, Filmación y Producción Audiovisual</h1>
+
             <p className="df-muted text-lg md:text-xl max-w-2xl mx-auto mb-10 font-normal">
-              Capturamos momentos con creatividad, estilo y calidad. 
+              Capturamos momentos con creatividad, estilo y calidad.
             </p>
             
             <div className="flex flex-col sm:flex-row justify-center gap-4">
@@ -425,10 +451,10 @@ export default function Home() {
 
         {/* SERVICIOS */}
         <motion.section 
-          initial={{ opacity: 0, y: 30 }} 
+          initial={{ opacity: 0, y: 24 }} 
           whileInView={{ opacity: 1, y: 0 }} 
-          transition={{ duration: 0.8 }} 
-          viewport={{ once: true }} 
+          transition={{ duration: 0.6 }} 
+          viewport={{ once: true, amount: 0.15 }} 
           id="servicios" 
           className="py-24 px-6 md:px-12 df-card border-t df-border"
         >
@@ -460,10 +486,10 @@ export default function Home() {
 
         {/* PORTAFOLIO / CATÁLOGO */}
         <motion.section 
-          initial={{ opacity: 0, y: 30 }} 
+          initial={{ opacity: 0, y: 24 }} 
           whileInView={{ opacity: 1, y: 0 }} 
-          transition={{ duration: 0.8 }} 
-          viewport={{ once: true }} 
+          transition={{ duration: 0.6 }} 
+          viewport={{ once: true, amount: 0.1 }} 
           id="portafolio" 
           className="py-24 px-6 md:px-12 df-card border-y df-border"
         >
@@ -484,10 +510,10 @@ export default function Home() {
 
         {/* METODOLOGÍA / PROCESO */}
         <motion.section 
-          initial={{ opacity: 0, y: 30 }} 
+          initial={{ opacity: 0, y: 24 }} 
           whileInView={{ opacity: 1, y: 0 }} 
-          transition={{ duration: 0.8 }} 
-          viewport={{ once: true }} 
+          transition={{ duration: 0.6 }} 
+          viewport={{ once: true, amount: 0.15 }} 
           id="proceso" 
           className="py-24 px-6 md:px-12"
         >
@@ -515,10 +541,10 @@ export default function Home() {
 
         {/* PRECIOS */}
         <motion.section 
-          initial={{ opacity: 0, y: 30 }} 
+          initial={{ opacity: 0, y: 24 }} 
           whileInView={{ opacity: 1, y: 0 }} 
-          transition={{ duration: 0.8 }} 
-          viewport={{ once: true }} 
+          transition={{ duration: 0.6 }} 
+          viewport={{ once: true, amount: 0.15 }} 
           id="precios" 
           className="py-24 px-6 md:px-12 df-card border-y df-border"
         >
@@ -528,7 +554,6 @@ export default function Home() {
               <h2 className="text-4xl md:text-5xl font-extrabold df-text">Planes de Cobertura</h2>
             </div>
             <div className="grid md:grid-cols-3 gap-8 items-stretch">
-              {/* PLAN ESENCIAL */}
               <div className="p-8 rounded-2xl border df-border df-bg shadow-xs hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 flex flex-col justify-between">
                 <div>
                   <p className="df-muted text-xs font-bold tracking-widest uppercase mb-2">Esencial</p>
@@ -548,7 +573,6 @@ export default function Home() {
                 </button>
               </div>
               
-              {/* PLAN CINEMÁTICO */}
               <div className="p-8 rounded-2xl border-2 border-amber-600 df-bg relative transform md:-translate-y-4 shadow-2xl transition-all duration-500 hover:-translate-y-6 flex flex-col justify-between">
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-600 text-white text-[10px] font-bold px-4 py-1.5 rounded-full uppercase tracking-wider shadow-md z-50 whitespace-nowrap">Más Solicitado</div>
                 <div>
@@ -569,7 +593,6 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* PLAN PREMIUM */}
               <div className="p-8 rounded-2xl border df-border df-bg shadow-xs hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 flex flex-col justify-between">
                 <div>
                   <p className="text-blue-600 text-xs font-bold tracking-widest uppercase mb-2">Premium</p>
@@ -592,14 +615,96 @@ export default function Home() {
           </div>
         </motion.section>
 
+        {/* ==================================================== */}
+        {/* TESTIMONIOS REALES DESDE FIREBASE                    */}
+        {/* ==================================================== */}
+        {testimonios.length > 0 && (
+          <motion.section 
+            initial={{ opacity: 0, y: 24 }} 
+            whileInView={{ opacity: 1, y: 0 }} 
+            transition={{ duration: 0.6 }} 
+            viewport={{ once: true, amount: 0.15 }} 
+            id="testimonios" 
+            className="py-24 px-6 md:px-12"
+          >
+            <div className="max-w-6xl mx-auto">
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-14">
+                <div className="text-center md:text-left">
+                  <p className="text-amber-600 text-xs font-bold tracking-widest uppercase mb-3">CLIENTES VERIFICADOS</p>
+                  <h2 className="text-4xl md:text-5xl font-extrabold df-text">Lo que dicen nuestros clientes</h2>
+                  <p className="df-muted text-sm mt-2 max-w-xl">
+                    Opiniones reales enviadas directamente por familias, promociones e instituciones al recibir su material en nuestra plataforma.
+                  </p>
+                </div>
+
+                <div className="df-card border df-border px-5 py-3.5 rounded-2xl flex items-center justify-center gap-3 self-center md:self-auto shadow-xs">
+                  <div className="flex items-center gap-0.5 text-amber-500">
+                    {[1, 2, 3, 4, 5].map(n => (
+                      <Star key={n} size={16} fill="currentColor" />
+                    ))}
+                  </div>
+                  <div className="text-left border-l df-border pl-3">
+                    <p className="text-sm font-black df-text leading-none">{promedioEstrellas} / 5.0</p>
+                    <p className="text-[10px] df-muted mt-0.5">
+                      {testimonios.length} {testimonios.length === 1 ? 'reseña verificada' : 'reseñas verificadas'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {testimonios.map((item) => {
+                  const cantEstrellas = Math.min(5, Math.max(1, Number(item.estrellas) || 5));
+                  const inicial = (item.nombreCliente || 'C').trim().charAt(0).toUpperCase();
+                  return (
+                    <article
+                      key={item.id}
+                      className="df-card border df-border p-7 rounded-3xl shadow-xs hover:shadow-xl hover:border-amber-600/40 transition-all duration-300 flex flex-col justify-between relative overflow-hidden group"
+                    >
+                      <Quote size={42} className="absolute top-5 right-5 text-amber-600/10 group-hover:text-amber-600/20 transition-colors pointer-events-none" />
+                      <div>
+                        <div className="flex items-center gap-1 text-amber-500 mb-4">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <Star
+                              key={i}
+                              size={15}
+                              fill={i < cantEstrellas ? "currentColor" : "none"}
+                              className={i < cantEstrellas ? "text-amber-500" : "df-muted opacity-30"}
+                            />
+                          ))}
+                        </div>
+                        <p className="df-text text-sm leading-relaxed italic mb-6">
+                          &ldquo;{item.comentario}&rdquo;
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3 pt-4 border-t df-border">
+                        <div className="w-10 h-10 rounded-full bg-amber-600/15 text-amber-600 font-black text-sm flex items-center justify-center flex-shrink-0">
+                          {inicial}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-bold df-text truncate">{item.nombreCliente}</h3>
+                          <p className="text-[11px] df-muted truncate">
+                            {item.evento || 'Cliente Deluces Films'}{item.fecha ? ` • ${item.fecha}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.section>
+        )}
+
         {/* PREGUNTAS FRECUENTES */}
         <motion.section 
-          initial={{ opacity: 0, y: 30 }} 
+          initial={{ opacity: 0, y: 24 }} 
           whileInView={{ opacity: 1, y: 0 }} 
-          transition={{ duration: 0.8 }} 
-          viewport={{ once: true }} 
+          transition={{ duration: 0.6 }} 
+          viewport={{ once: true, amount: 0.15 }} 
           id="faq" 
-          className="py-24 px-6 md:px-12"
+          className={`py-24 px-6 md:px-12 ${testimonios.length > 0 ? 'df-card border-t df-border' : ''}`}
         >
           <div className="max-w-4xl mx-auto">
             <div className="text-center mb-16">
@@ -610,7 +715,7 @@ export default function Home() {
               {preguntasFrecuentes.map((faq, index) => (
                 <div 
                   key={index} 
-                  className="df-card border df-border rounded-2xl overflow-hidden shadow-xs transition-all duration-300"
+                  className={`${testimonios.length > 0 ? 'df-bg' : 'df-card'} border df-border rounded-2xl overflow-hidden shadow-xs transition-all duration-300`}
                 >
                   <button
                     onClick={() => toggleFaq(index)}
@@ -636,10 +741,10 @@ export default function Home() {
 
         {/* CONTACTO */}
         <motion.section 
-          initial={{ opacity: 0, y: 30 }} 
+          initial={{ opacity: 0, y: 24 }} 
           whileInView={{ opacity: 1, y: 0 }} 
-          transition={{ duration: 0.8 }} 
-          viewport={{ once: true }} 
+          transition={{ duration: 0.6 }} 
+          viewport={{ once: true, amount: 0.15 }} 
           id="contacto" 
           className="py-24 px-6 md:px-12 df-card border-t df-border relative overflow-hidden"
         >
@@ -754,7 +859,7 @@ export default function Home() {
 
         {/* WIDGET FLOTANTE DE WHATSAPP */}
         <a 
-          href="https://wa.me/51967576214?text=Hola,%20me%20interesa%20cotizar%20un%20servicio%20audiovisual." 
+          href="https://api.whatsapp.com/send?phone=51967576214&text=Hola,%20me%20interesa%20cotizar%20un%20servicio%20audiovisual." 
           target="_blank" 
           rel="noopener noreferrer"
           className="fixed bottom-6 right-6 z-50 bg-[#25D366] text-white p-3.5 rounded-full shadow-2xl whatsapp-pulse transition-all duration-300 flex items-center justify-center group cursor-pointer"

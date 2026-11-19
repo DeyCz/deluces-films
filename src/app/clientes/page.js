@@ -1,18 +1,18 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { 
   Lock, LogOut, Download, ArrowLeft, Eye, EyeOff, Play, Pause,
   Film, FolderOpen, X, Heart, ChevronLeft, ChevronRight, Share2, 
-  Send, Sparkles, Volume2, VolumeX, Star, Frame, BookOpen, Gift, CheckCircle2
+  Send, Sparkles, Volume2, VolumeX, Star, Frame, BookOpen, Gift,
+  CheckCircle2, Music, Monitor, Smartphone
 } from 'lucide-react';
 import Link from 'next/link';
 
 const NUMERO_DELUCES = '51967576214';
 
-// Genera URL universal de WhatsApp que funciona en Celular, WhatsApp Web y App de PC
 const crearUrlWhatsApp = (telefono, texto) => {
   const textoCodificado = encodeURIComponent(texto);
   const numeroLimpio = (telefono || '').replace(/\D/g, '');
@@ -22,11 +22,16 @@ const crearUrlWhatsApp = (telefono, texto) => {
   return `https://api.whatsapp.com/send?text=${textoCodificado}`;
 };
 
-const formatearImagenDrive = (url) => {
+// Reescribe tanto links /file/d/ como thumbnails ya guardados con sz=w1600 para cargar rápido
+const formatearImagenDrive = (url, ancho = 600) => {
   if (!url) return '/institucional.jpg';
   if (url.includes('drive.google.com/file/d/')) {
     const id = url.split('/d/')[1]?.split('/')[0];
-    if (id) return `https://drive.google.com/thumbnail?id=${id}&sz=w1600`;
+    if (id) return `https://drive.google.com/thumbnail?id=${id}&sz=w${ancho}`;
+  }
+  if (url.includes('drive.google.com/thumbnail?id=')) {
+    const id = url.split('id=')[1]?.split('&')[0];
+    if (id) return `https://drive.google.com/thumbnail?id=${id}&sz=w${ancho}`;
   }
   return url;
 };
@@ -65,20 +70,48 @@ const obtenerEmbedVideo = (url) => {
   return null;
 };
 
+const resolverConfigMusica = (cliente) => {
+  if (!cliente) return { modo: 'ninguna', src: null, titulo: '' };
+  if (cliente.musicaTipo === 'ninguna') {
+    return { modo: 'ninguna', src: null, titulo: '' };
+  }
+
+  const url = (cliente.musicaUrl || '').trim();
+  const titulo = (cliente.musicaTitulo || '').trim();
+
+  if (url) {
+    if (url.includes('drive.google.com/file/d/')) {
+      const id = url.split('/d/')[1]?.split('/')[0];
+      if (id) return { modo: 'audio', src: `/api/audio?id=${id}`, titulo: titulo || 'Música del Álbum' };
+    }
+    if (url.includes('drive.google.com') && url.includes('id=')) {
+      const id = url.split('id=')[1]?.split('&')[0];
+      if (id) return { modo: 'audio', src: `/api/audio?id=${id}`, titulo: titulo || 'Música del Álbum' };
+    }
+    return { modo: 'audio', src: url, titulo: titulo || 'Música del Álbum' };
+  }
+
+  return { modo: 'sintetizador', src: null, titulo: titulo || 'Piano Ambiental' };
+};
+
 export default function AreaClientes() {
   const [passwordInput, setPasswordInput] = useState('');
   const [mostrarPass, setMostrarPass] = useState(false);
   const [clienteActual, setClienteActual] = useState(null);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState(false);
+
+  // Reproductor de video
   const [videoActivo, setVideoActivo] = useState(null);
+  const [formatoVideo, setFormatoVideo] = useState('horizontal');
 
   // Estados del Álbum Digital Interactivo
   const [favoritas, setFavoritas] = useState([]);
   const [soloFavoritas, setSoloFavoritas] = useState(false);
   const [fotoModalIndex, setFotoModalIndex] = useState(null);
   const [modoPresentacion, setModoPresentacion] = useState(false);
-  const [musicaActiva, setMusicaActiva] = useState(true);
+  const [musicaReproduciendo, setMusicaReproduciendo] = useState(false);
+  const [fallbackSintetizador, setFallbackSintetizador] = useState(false);
   const [touchStartX, setTouchStartX] = useState(null);
 
   // Estados de Reseña / Testimonio al descargar
@@ -89,9 +122,17 @@ export default function AreaClientes() {
   const [enviandoResena, setEnviandoResena] = useState(false);
   const [resenaEnviada, setResenaEnviada] = useState(false);
 
-  // Referencias para música instrumental nativa (Web Audio API)
+  // Referencias de audio (MP3 real + sintetizador de respaldo)
+  const audioElemRef = useRef(null);
   const audioCtxRef = useRef(null);
   const musicIntervalRef = useRef(null);
+
+  const configMusica = useMemo(() => resolverConfigMusica(clienteActual), [clienteActual]);
+  const musicaDisponible = configMusica.modo !== 'ninguna';
+
+  useEffect(() => {
+    setFallbackSintetizador(false);
+  }, [configMusica.src]);
 
   // Cargar sesión o autologin desde ?code=
   useEffect(() => {
@@ -166,7 +207,10 @@ export default function AreaClientes() {
     await buscarClientePorCodigo(passwordInput);
   };
 
-  const detenerMusica = () => {
+  // ======================================================
+  // MOTOR DE MÚSICA (MP3 PERSONALIZADO + RESPALDO PIANO)
+  // ======================================================
+  const detenerSintetizador = () => {
     if (musicIntervalRef.current) {
       clearInterval(musicIntervalRef.current);
       musicIntervalRef.current = null;
@@ -177,8 +221,8 @@ export default function AreaClientes() {
     }
   };
 
-  const iniciarMusicaAmbiental = () => {
-    detenerMusica();
+  const iniciarSintetizador = () => {
+    detenerSintetizador();
     if (typeof window === 'undefined') return;
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return;
@@ -186,12 +230,11 @@ export default function AreaClientes() {
     const ctx = new AudioContextClass();
     audioCtxRef.current = ctx;
 
-    // Progresión emotiva suave estilo piano cinematográfico (Do mayor -> La menor -> Fa -> Sol)
     const acordes = [
-      [261.63, 329.63, 392.00, 523.25], // C
-      [220.00, 261.63, 329.63, 440.00], // Am
-      [174.61, 220.00, 261.63, 349.23], // F
-      [196.00, 246.94, 293.66, 392.00]  // G
+      [261.63, 329.63, 392.00, 523.25],
+      [220.00, 261.63, 329.63, 440.00],
+      [174.61, 220.00, 261.63, 349.23],
+      [196.00, 246.94, 293.66, 392.00]
     ];
     let paso = 0;
 
@@ -221,18 +264,64 @@ export default function AreaClientes() {
     musicIntervalRef.current = setInterval(tocarAcorde, 3500);
   };
 
-  // Controlar encendido/apagado de música durante la presentación
-  useEffect(() => {
-    if (modoPresentacion && fotoModalIndex !== null && musicaActiva) {
-      iniciarMusicaAmbiental();
-    } else {
-      detenerMusica();
+  const detenerTodaLaMusica = () => {
+    detenerSintetizador();
+    if (audioElemRef.current) {
+      audioElemRef.current.pause();
     }
-    return () => detenerMusica();
-  }, [modoPresentacion, fotoModalIndex, musicaActiva]);
+    setMusicaReproduciendo(false);
+  };
+
+  const iniciarMusica = () => {
+    if (!musicaDisponible) return;
+
+    const usarAudioReal = configMusica.modo === 'audio' && configMusica.src && !fallbackSintetizador;
+    if (usarAudioReal && audioElemRef.current) {
+      detenerSintetizador();
+      audioElemRef.current.volume = 0.65;
+      audioElemRef.current
+        .play()
+        .then(() => {
+          setMusicaReproduciendo(true);
+        })
+        .catch(() => {
+          // Si falla la pista externa, cae al piano ambiental para no dejar silencio
+          setFallbackSintetizador(true);
+          iniciarSintetizador();
+          setMusicaReproduciendo(true);
+        });
+    } else {
+      if (audioElemRef.current) audioElemRef.current.pause();
+      iniciarSintetizador();
+      setMusicaReproduciendo(true);
+    }
+  };
+
+  const toggleMusica = () => {
+    if (musicaReproduciendo) {
+      detenerTodaLaMusica();
+    } else {
+      iniciarMusica();
+    }
+  };
+
+  // Pausar música automáticamente si el cliente abre un video
+  useEffect(() => {
+    if (videoActivo && musicaReproduciendo) {
+      detenerTodaLaMusica();
+    }
+  }, [videoActivo]);
+
+  // Limpiar audio al desmontar
+  useEffect(() => {
+    return () => {
+      detenerSintetizador();
+      if (audioElemRef.current) audioElemRef.current.pause();
+    };
+  }, []);
 
   const cerrarSesionCliente = () => {
-    detenerMusica();
+    detenerTodaLaMusica();
     setClienteActual(null);
     setVideoActivo(null);
     setFotoModalIndex(null);
@@ -242,7 +331,14 @@ export default function AreaClientes() {
 
   const fotosDelAlbum = Array.isArray(clienteActual?.albumFotos) ? clienteActual.albumFotos : [];
 
-  // Guardar / quitar foto favorita (❤️)
+  // Precargar la siguiente foto en pantalla completa para que el pase sea instantáneo
+  useEffect(() => {
+    if (fotoModalIndex === null || fotosDelAlbum.length <= 1) return;
+    const siguienteIdx = (fotoModalIndex + 1) % fotosDelAlbum.length;
+    const imgPreload = new window.Image();
+    imgPreload.src = formatearImagenDrive(fotosDelAlbum[siguienteIdx], 1600);
+  }, [fotoModalIndex, fotosDelAlbum]);
+
   const toggleFavorita = (indexFoto, e) => {
     if (e) e.stopPropagation();
     const nuevasFavs = favoritas.includes(indexFoto)
@@ -255,7 +351,6 @@ export default function AreaClientes() {
     }
   };
 
-  // Textos listos para enlaces directos de WhatsApp (sin bloqueos de popup)
   const numerosFotosFavoritas = favoritas.map(idx => `Foto #${idx + 1}`).join(', ');
   const textoWhatsAppFavoritas = clienteActual
     ? `¡Hola Deluces Films! 📸✨ Soy de *${clienteActual.nombreCliente}*.\nHe revisado mi Álbum Digital y estas son mis *${favoritas.length} fotos favoritas* seleccionadas:\n\n❤️ *Selección:* ${numerosFotosFavoritas}`
@@ -268,7 +363,6 @@ export default function AreaClientes() {
       )
     : '#';
 
-  // Función al hacer clic en Descargar: abre el modal de reseña si aún no ha calificado
   const registrarDescargaYMostrarResena = () => {
     if (!resenaEnviada) {
       setTimeout(() => {
@@ -277,7 +371,6 @@ export default function AreaClientes() {
     }
   };
 
-  // Guardar Reseña / Testimonio en Firebase
   const handleEnviarResena = async (e) => {
     e.preventDefault();
     if (!comentarioResena.trim()) return;
@@ -305,7 +398,6 @@ export default function AreaClientes() {
     }
   };
 
-  // Navegación del Visor de Álbum (Lightbox)
   const irFotoSiguiente = (e) => {
     if (e) e.stopPropagation();
     if (fotosDelAlbum.length === 0) return;
@@ -318,7 +410,7 @@ export default function AreaClientes() {
     setFotoModalIndex(prev => (prev - 1 + fotosDelAlbum.length) % fotosDelAlbum.length);
   };
 
-  // Efecto Modo Presentación Automática (Slideshow)
+  // Modo Presentación Automática (Slideshow)
   useEffect(() => {
     if (!modoPresentacion || fotoModalIndex === null || fotosDelAlbum.length <= 1) return;
     const timer = setInterval(() => {
@@ -341,6 +433,19 @@ export default function AreaClientes() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [fotoModalIndex, fotosDelAlbum.length]);
+
+  const abrirPresentacionConMusica = () => {
+    setFotoModalIndex(0);
+    setModoPresentacion(true);
+    if (musicaDisponible && !musicaReproduciendo) {
+      iniciarMusica();
+    }
+  };
+
+  const cerrarVisorFotos = () => {
+    setFotoModalIndex(null);
+    setModoPresentacion(false);
+  };
 
   // VISTA DE LOGIN
   if (!clienteActual) {
@@ -395,6 +500,20 @@ export default function AreaClientes() {
   // VISTA DE CLIENTE AUTENTICADO
   return (
     <div className="min-h-screen df-bg pt-12 pb-20 px-6">
+      {/* Reproductor HTML5 oculto para música MP3 personalizada */}
+      {configMusica.modo === 'audio' && configMusica.src && (
+        <audio
+          ref={audioElemRef}
+          src={configMusica.src}
+          loop
+          preload="none"
+          onError={() => {
+            setFallbackSintetizador(true);
+            if (musicaReproduciendo) iniciarSintetizador();
+          }}
+        />
+      )}
+
       <div className="max-w-5xl mx-auto space-y-10">
         
         {/* BARRA SUPERIOR */}
@@ -402,13 +521,31 @@ export default function AreaClientes() {
           <button onClick={cerrarSesionCliente} className="text-sm df-muted hover:df-text flex items-center gap-2 cursor-pointer">
             <ArrowLeft size={16} /> Cambiar código
           </button>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+            {musicaDisponible && (
+              <button
+                type="button"
+                onClick={toggleMusica}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                  musicaReproduciendo
+                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                    : 'df-card df-border df-text hover:border-amber-600'
+                }`}
+                title="Reproducir o pausar música del álbum"
+              >
+                {musicaReproduciendo ? <Volume2 size={14} className="animate-pulse" /> : <Music size={14} className="text-amber-600" />}
+                <span className="max-w-[140px] truncate">
+                  {musicaReproduciendo ? configMusica.titulo : `Música: ${configMusica.titulo}`}
+                </span>
+              </button>
+            )}
+
             <button 
               type="button"
               onClick={() => setModalResenaAbierto(true)} 
               className="text-xs font-bold text-amber-500 hover:text-amber-400 flex items-center gap-1.5 cursor-pointer"
             >
-              <Star size={15} fill="currentColor" /> {resenaEnviada ? '¡Gracias por tu reseña!' : 'Calificar Servicio'}
+              <Star size={15} fill="currentColor" /> {resenaEnviada ? '¡Gracias por tu reseña!' : 'Calificar'}
             </button>
             <a 
               href={urlCompartirFamilia}
@@ -416,7 +553,7 @@ export default function AreaClientes() {
               rel="noopener noreferrer"
               className="text-xs font-bold text-amber-600 hover:text-amber-500 flex items-center gap-1.5 cursor-pointer"
             >
-              <Share2 size={15} /> Compartir con familia
+              <Share2 size={15} /> Compartir
             </a>
             <button onClick={cerrarSesionCliente} className="text-sm df-muted hover:text-red-500 flex items-center gap-1.5 cursor-pointer transition-colors">
               <LogOut size={16} /> Salir
@@ -435,8 +572,10 @@ export default function AreaClientes() {
         <div className="df-card border df-border rounded-3xl overflow-hidden shadow-2xl">
           <div className="h-64 md:h-80 w-full bg-gray-900 relative">
             <img 
-              src={formatearImagenDrive(clienteActual.previewImage)} 
-              alt={clienteActual.nombreCliente} 
+              src={formatearImagenDrive(clienteActual.previewImage, 1200)} 
+              alt={clienteActual.nombreCliente}
+              fetchPriority="high"
+              decoding="async"
               className="w-full h-full object-cover opacity-80"
               onError={(e) => { e.currentTarget.src = '/institucional.jpg'; }}
             />
@@ -451,10 +590,13 @@ export default function AreaClientes() {
               {fotosDelAlbum.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => { setFotoModalIndex(0); setModoPresentacion(true); }}
+                  onClick={abrirPresentacionConMusica}
                   className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg transition-all cursor-pointer w-fit"
                 >
-                  <Play size={14} fill="currentColor" /> Reproducir Álbum con Música ({fotosDelAlbum.length} fotos)
+                  <Play size={14} fill="currentColor" />
+                  {musicaDisponible
+                    ? `Reproducir Álbum con Música (${fotosDelAlbum.length} fotos)`
+                    : `Ver Presentación (${fotosDelAlbum.length} fotos)`}
                 </button>
               )}
             </div>
@@ -477,6 +619,7 @@ export default function AreaClientes() {
             <div className="grid grid-cols-1 gap-4">
               {entregables.map((item, idx) => {
                 const embedUrl = obtenerEmbedVideo(item.url);
+                const esReel = /reel|vertical|tiktok|short/i.test(item.titulo || '');
                 return (
                   <div key={idx} className="df-bg border df-border p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-amber-600/50 transition-all">
                     <div className="flex items-center gap-3">
@@ -493,7 +636,14 @@ export default function AreaClientes() {
                       {embedUrl && (
                         <button
                           type="button"
-                          onClick={() => setVideoActivo(videoActivo === embedUrl ? null : embedUrl)}
+                          onClick={() => {
+                            if (videoActivo === embedUrl) {
+                              setVideoActivo(null);
+                            } else {
+                              setFormatoVideo(esReel ? 'vertical' : 'horizontal');
+                              setVideoActivo(embedUrl);
+                            }
+                          }}
                           className="flex-1 sm:flex-initial flex items-center justify-center gap-2 df-card border df-border df-text px-4 py-3 rounded-xl font-bold text-xs hover:border-amber-600 transition-all cursor-pointer"
                         >
                           <Play size={15} className="text-amber-600" />
@@ -521,29 +671,44 @@ export default function AreaClientes() {
                   <span className="text-xs font-bold uppercase tracking-wider text-amber-600">
                     Reproductor Deluces Films HD
                   </span>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormatoVideo(formatoVideo === 'horizontal' ? 'vertical' : 'horizontal')}
+                      className="text-[11px] font-bold df-bg border df-border hover:border-amber-600 df-text px-3 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer transition-all"
+                      title="Cambiar entre video horizontal y reel vertical"
+                    >
+                      {formatoVideo === 'horizontal' ? <Smartphone size={13} className="text-amber-600" /> : <Monitor size={13} className="text-amber-600" />}
+                      {formatoVideo === 'horizontal' ? 'Ver en 9:16' : 'Ver en 16:9'}
+                    </button>
                     <button 
                       type="button"
                       onClick={() => setVideoActivo(null)} 
-                      className="text-xs df-muted hover:df-text flex items-center gap-1 cursor-pointer"
+                      className="text-xs df-muted hover:df-text flex items-center gap-1 cursor-pointer pl-2"
                     >
-                      <X size={15} /> Cerrar reproductor
+                      <X size={15} /> Cerrar
                     </button>
                   </div>
                 </div>
 
-                {/* Reproductor 16:9 con Escalado Virtual 2x para evitar controles gigantes en celular */}
-                <div className="w-full max-w-3xl mx-auto aspect-video bg-black rounded-2xl sm:rounded-3xl overflow-hidden border df-border shadow-2xl relative">
+                {/* Reproductor con Escalado Virtual 3x (barra delgada de PC en celular) + máscara en esquina */}
+                <div
+                  className={
+                    formatoVideo === 'horizontal'
+                      ? "w-full max-w-3xl mx-auto aspect-video bg-black rounded-2xl sm:rounded-3xl overflow-hidden border df-border shadow-2xl relative"
+                      : "w-full max-w-[320px] sm:max-w-[360px] mx-auto aspect-[9/16] bg-black rounded-2xl sm:rounded-3xl overflow-hidden border df-border shadow-2xl relative"
+                  }
+                >
                   <div className="absolute inset-0 w-full h-full overflow-hidden bg-black">
                     <iframe
                       src={videoActivo}
                       style={{
                         position: 'absolute',
-                        top: '-2%',
-                        left: '-2%',
-                        width: '204%',
-                        height: '204%',
-                        transform: 'scale(0.5)',
+                        top: '0%',
+                        left: '0%',
+                        width: '300%',
+                        height: '300%',
+                        transform: 'scale(0.333333)',
                         transformOrigin: 'top left',
                       }}
                       className="border-0 bg-black"
@@ -551,7 +716,7 @@ export default function AreaClientes() {
                       allowFullScreen
                     />
                   </div>
-                  <div className="absolute top-2.5 right-2.5 z-30 bg-black/90 backdrop-blur-md border border-white/15 px-3 py-1.5 rounded-xl flex items-center gap-1.5 select-none pointer-events-auto">
+                  <div className="absolute top-0 right-0 z-30 bg-zinc-950/95 backdrop-blur-md border-b border-l border-white/15 px-3.5 py-2 rounded-bl-2xl flex items-center gap-1.5 select-none pointer-events-auto shadow-lg">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                     <span className="text-[9px] font-bold tracking-widest uppercase text-white/95">
                       Deluces HD
@@ -606,7 +771,7 @@ export default function AreaClientes() {
               </div>
             </div>
 
-            {/* CUADRÍCULA DEL ÁLBUM */}
+            {/* CUADRÍCULA DEL ÁLBUM (MINIATURAS RÁPIDAS w600) */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-4">
               {fotosDelAlbum.map((fotoUrl, index) => {
                 const esFav = favoritas.includes(index);
@@ -619,9 +784,10 @@ export default function AreaClientes() {
                     className="group relative aspect-[4/5] rounded-2xl overflow-hidden df-bg border df-border cursor-pointer shadow-xs hover:shadow-xl transition-all duration-300"
                   >
                     <img 
-                      src={formatearImagenDrive(fotoUrl)} 
+                      src={formatearImagenDrive(fotoUrl, 600)} 
                       alt={`Foto ${index + 1}`} 
                       loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-60 group-hover:opacity-90 transition-opacity" />
@@ -647,9 +813,7 @@ export default function AreaClientes() {
           </div>
         )}
 
-        {/* ==================================================== */}
-        {/* BANNER DE UPSELLING: CUADRO FÍSICO O ÁLBUM IMPRESO   */}
-        {/* ==================================================== */}
+        {/* BANNER DE UPSELLING: CUADRO FÍSICO O ÁLBUM IMPRESO */}
         <div className="df-card border-2 border-amber-600/40 rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
             <div>
@@ -666,7 +830,6 @@ export default function AreaClientes() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* OPCIÓN 1: CUADRO ENMARCADO */}
             <div className="df-bg border df-border rounded-2xl p-5 flex flex-col justify-between hover:border-amber-600/50 transition-all">
               <div>
                 <div className="w-10 h-10 rounded-xl bg-amber-600/10 text-amber-600 flex items-center justify-center mb-3">
@@ -691,7 +854,6 @@ export default function AreaClientes() {
               </a>
             </div>
 
-            {/* OPCIÓN 2: ÁLBUM IMPRESO + USB */}
             <div className="df-bg border df-border rounded-2xl p-5 flex flex-col justify-between hover:border-amber-600/50 transition-all">
               <div>
                 <div className="w-10 h-10 rounded-xl bg-amber-600/10 text-amber-600 flex items-center justify-center mb-3">
@@ -716,7 +878,6 @@ export default function AreaClientes() {
               </a>
             </div>
 
-            {/* OPCIÓN 3: PACK RECUERDO COMPLETO */}
             <div className="df-bg border df-border rounded-2xl p-5 flex flex-col justify-between hover:border-amber-600/50 transition-all">
               <div>
                 <div className="w-10 h-10 rounded-xl bg-amber-600/10 text-amber-600 flex items-center justify-center mb-3">
@@ -746,11 +907,11 @@ export default function AreaClientes() {
       </div>
 
       {/* ==================================================== */}
-      {/* VISOR DE PANTALLA COMPLETA (CON MÚSICA OPCIONAL)     */}
+      {/* VISOR DE PANTALLA COMPLETA (HD w1600 + MÚSICA)       */}
       {/* ==================================================== */}
       {fotoModalIndex !== null && fotosDelAlbum[fotoModalIndex] && (
         <div 
-          onClick={() => { setFotoModalIndex(null); setModoPresentacion(false); }}
+          onClick={cerrarVisorFotos}
           onTouchStart={(e) => setTouchStartX(e.touches[0].clientX)}
           onTouchEnd={(e) => {
             if (touchStartX === null) return;
@@ -768,10 +929,15 @@ export default function AreaClientes() {
             </span>
 
             <div className="flex items-center gap-2">
-              {/* Botón Play / Pausa Presentación */}
               <button
                 type="button"
-                onClick={() => setModoPresentacion(!modoPresentacion)}
+                onClick={() => {
+                  const nuevoEstado = !modoPresentacion;
+                  setModoPresentacion(nuevoEstado);
+                  if (nuevoEstado && musicaDisponible && !musicaReproduciendo) {
+                    iniciarMusica();
+                  }
+                }}
                 className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
                   modoPresentacion ? 'bg-amber-600 text-white' : 'bg-white/10 text-white hover:bg-white/20'
                 }`}
@@ -780,23 +946,22 @@ export default function AreaClientes() {
                 {modoPresentacion ? 'Pausar' : 'Presentación'}
               </button>
 
-              {/* Botón de Música de Fondo Opcional */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (!modoPresentacion) setModoPresentacion(true);
-                  setMusicaActiva(!musicaActiva);
-                }}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
-                  modoPresentacion && musicaActiva ? 'bg-emerald-600 text-white' : 'bg-white/10 text-white/80 hover:bg-white/20'
-                }`}
-                title="Activar o silenciar música de fondo"
-              >
-                {modoPresentacion && musicaActiva ? <Volume2 size={14} /> : <VolumeX size={14} />}
-                <span className="hidden sm:inline">{modoPresentacion && musicaActiva ? 'Música ON' : 'Música OFF'}</span>
-              </button>
+              {musicaDisponible && (
+                <button
+                  type="button"
+                  onClick={toggleMusica}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                    musicaReproduciendo ? 'bg-emerald-600 text-white' : 'bg-white/10 text-white/80 hover:bg-white/20'
+                  }`}
+                  title="Activar o silenciar música del álbum"
+                >
+                  {musicaReproduciendo ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                  <span className="hidden sm:inline max-w-[140px] truncate">
+                    {musicaReproduciendo ? configMusica.titulo : 'Música OFF'}
+                  </span>
+                </button>
+              )}
 
-              {/* Botón Favorita */}
               <button
                 type="button"
                 onClick={(e) => toggleFavorita(fotoModalIndex, e)}
@@ -808,7 +973,6 @@ export default function AreaClientes() {
                 <Heart size={18} fill={favoritas.includes(fotoModalIndex) ? "currentColor" : "none"} />
               </button>
 
-              {/* Descargar Foto Individual */}
               <a
                 href={obtenerLinkDescargaFoto(fotosDelAlbum[fotoModalIndex])}
                 target="_blank"
@@ -820,10 +984,9 @@ export default function AreaClientes() {
                 <Download size={18} />
               </a>
 
-              {/* Cerrar Visor */}
               <button
                 type="button"
-                onClick={() => { setFotoModalIndex(null); setModoPresentacion(false); }}
+                onClick={cerrarVisorFotos}
                 className="p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors cursor-pointer"
               >
                 <X size={18} />
@@ -831,7 +994,6 @@ export default function AreaClientes() {
             </div>
           </div>
 
-          {/* Botones Anterior / Siguiente */}
           {fotosDelAlbum.length > 1 && (
             <>
               <button onClick={irFotoAnterior} className="absolute left-3 md:left-6 top-1/2 -translate-y-1/2 z-50 p-3 rounded-full bg-black/50 hover:bg-black/80 text-white/80 hover:text-white cursor-pointer">
@@ -843,20 +1005,18 @@ export default function AreaClientes() {
             </>
           )}
 
-          {/* Imagen Principal */}
           <div onClick={(e) => e.stopPropagation()} className="max-w-4xl max-h-[80vh] flex items-center justify-center">
             <img
-              src={formatearImagenDrive(fotosDelAlbum[fotoModalIndex])}
+              src={formatearImagenDrive(fotosDelAlbum[fotoModalIndex], 1600)}
               alt={`Foto ${fotoModalIndex + 1}`}
+              decoding="async"
               className="max-h-[78vh] w-auto max-w-full object-contain rounded-xl shadow-2xl select-none"
             />
           </div>
         </div>
       )}
 
-      {/* ==================================================== */}
-      {/* MODAL DE RESEÑA / TESTIMONIO AL DESCARGAR            */}
-      {/* ==================================================== */}
+      {/* MODAL DE RESEÑA / TESTIMONIO AL DESCARGAR */}
       {modalResenaAbierto && (
         <div 
           onClick={() => setModalResenaAbierto(false)}
@@ -897,7 +1057,6 @@ export default function AreaClientes() {
                   </p>
                 </div>
 
-                {/* Selector de 5 Estrellas */}
                 <div className="flex justify-center gap-2 py-2">
                   {[1, 2, 3, 4, 5].map((num) => (
                     <button

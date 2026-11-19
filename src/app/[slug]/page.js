@@ -1,80 +1,80 @@
-import SlugClient from "./SlugClient";
+import SlugClient from './SlugClient';
 
-const infoCategorias = {
+const SITE_URL = 'https://deluces-films.vercel.app';
+
+const seoCategorias = {
   'institucional': {
-    titulo: 'Eventos Institucionales',
-    subtitulo: 'COBERTURA CORPORATIVA Y OFICIAL',
-    desc: 'Registro audiovisual de alta calidad para conferencias, promociones escolares, aniversarios, ceremonias y eventos corporativos.',
-    accent: 'bg-blue-600/10'
+    titulo: 'Eventos Institucionales | Deluces Films',
+    desc: 'Cobertura audiovisual profesional para promociones escolares, conferencias, aniversarios y ceremonias en Cerro de Pasco y Lima.',
   },
   'parejas': {
-    titulo: 'Sesión de Fotos de Pareja',
-    subtitulo: 'FOTOGRAFÍA ESPECIALIZADA',
-    desc: 'Capturamos la complicidad, la naturalidad y la esencia de su relación en locaciones al aire libre y atardeceres inolvidables.',
-    accent: 'bg-amber-600/10'
+    titulo: 'Sesión de Fotos de Pareja | Deluces Films',
+    desc: 'Fotografía especializada de parejas en exteriores y atardeceres inolvidables. Reserva tu sesión con Deluces Films.',
   },
   'publicidad': {
-    titulo: 'Publicidad para Negocios',
-    subtitulo: 'SPOTS COMERCIALES Y DE MARCA',
-    desc: 'Creamos contenido visual estratégico y Reels dinámicos para redes sociales que conectan con tus clientes y elevan tus ventas.',
-    accent: 'bg-indigo-600/10'
+    titulo: 'Publicidad y Reels para Negocios | Deluces Films',
+    desc: 'Spots comerciales y reels estratégicos para redes sociales que potencian tu marca y elevan tus ventas.',
   },
   'revelacion-genero': {
-    titulo: 'Revelación de Género',
-    subtitulo: 'MOMENTOS FAMILIARES ÚNICOS',
-    desc: 'Inmortalizamos la emoción de 15 años, cumpleaños y grandes anuncios familiares con un registro lleno de vida y color.',
-    accent: 'bg-pink-600/10'
+    titulo: 'Revelación de Género | Deluces Films',
+    desc: 'Fotografía y video cinematográfico para inmortalizar la emoción de tu revelación de género y momentos familiares.',
   },
   'fiestas-patronales': {
-    titulo: 'Fiestas Patronales',
-    subtitulo: 'TRADICIÓN Y COSTUMBRES',
-    desc: 'Cobertura completa de festividades, danzas y comparsas con un manejo impecable de la luz y el movimiento.',
-    accent: 'bg-amber-600/10'
+    titulo: 'Fiestas Patronales | Deluces Films',
+    desc: 'Cobertura audiovisual de festividades, comparsas y tradiciones con estética cinematográfica en Cerro de Pasco y todo el Perú.',
   },
   'videoclips': {
-    titulo: 'Videoclips y Grupos de Baile',
-    subtitulo: 'PRODUCCIÓN MUSICAL Y ARTÍSTICA',
-    desc: 'Edición rítmica, sincronización precisa y estética cinematográfica para artistas, cantantes y agrupaciones de baile.',
-    accent: 'bg-indigo-600/10'
+    titulo: 'Videoclips y Grupos de Baile | Deluces Films',
+    desc: 'Producción musical, edición rítmica y video HD/4K para artistas, cantantes y agrupaciones de baile.',
   },
   'invitaciones-virtuales': {
-    titulo: 'Invitaciones Virtuales',
-    subtitulo: 'ANIMACIÓN Y MOTION GRAPHICS',
-    desc: 'Sorprende a tus invitados desde el primer segundo con invitaciones en video animadas, modernas y personalizadas.',
-    accent: 'bg-blue-600/10'
+    titulo: 'Invitaciones Virtuales Animadas | Deluces Films',
+    desc: 'Invitaciones en video modernas y personalizadas con motion graphics para 15 años, bodas, promociones y eventos.',
   },
   'personal': {
-    titulo: 'Fotos y Videos Personales',
-    subtitulo: 'RETRATOS, PROMOCIÓN Y DEPORTES',
-    desc: 'Sesiones individuales, cuadros de promoción, fotografía deportiva y cobertura de momentos especiales con enfoque profesional.',
-    accent: 'bg-pink-600/10'
-  }
+    titulo: 'Fotos y Videos Personales | Deluces Films',
+    desc: 'Retratos artísticos, cuadros de promoción, fotografía deportiva y cobertura personalizada.',
+  },
 };
 
 export async function generateMetadata({ params }) {
-  const resolvedParams = await params;
-  const slug = resolvedParams?.slug;
-  const categoria = infoCategorias[slug] || {
-    titulo: 'Servicio Audiovisual',
-    subtitulo: 'DELUCES FILMS',
-    desc: 'Producción profesional de fotografía y filmación adaptada a tus requerimientos.'
+  const { slug } = await params;
+  const info = seoCategorias[slug] || {
+    titulo: 'Portafolio Audiovisual | Deluces Films',
+    desc: 'Producción fotográfica y audiovisual profesional en Cerro de Pasco, Lima y todo el Perú.',
   };
+  const url = `${SITE_URL}/${slug}`;
 
   return {
-    title: `${categoria.titulo} | Deluces Films`,
-    description: categoria.desc,
+    title: info.titulo,
+    description: info.desc,
+    alternates: { canonical: url },
     openGraph: {
-      title: `${categoria.titulo} | Deluces Films`,
-      description: categoria.desc,
-      url: `https://deluces-films.vercel.app/${slug}`,
+      title: info.titulo,
+      description: info.desc,
+      url,
       siteName: 'Deluces Films',
       locale: 'es_PE',
       type: 'website',
+      images: [
+        {
+          url: `${SITE_URL}/institucional.jpg`,
+          width: 1200,
+          height: 630,
+          alt: info.titulo,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: info.titulo,
+      description: info.desc,
+      images: [`${SITE_URL}/institucional.jpg`],
     },
   };
 }
 
-export default async function Page({ params }) {
-  const resolvedParams = await params;
-  return <SlugClient slug={resolvedParams?.slug} />;
+export default async function CategoriaPage({ params }) {
+  const { slug } = await params;
+  return <SlugClient slug={slug} />;
 }
