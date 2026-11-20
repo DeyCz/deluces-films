@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, onSnapshot } from 'firebase/firestore';
 import { 
   Lock, LogOut, Download, ArrowLeft, Eye, EyeOff, Play, Pause,
   Film, FolderOpen, X, Heart, ChevronLeft, ChevronRight, Share2, 
@@ -99,6 +99,7 @@ export default function AreaClientes() {
   const [clienteActual, setClienteActual] = useState(null);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState(false);
+  const [actualizacionEnVivo, setActualizacionEnVivo] = useState(false);
 
   const [videoActivo, setVideoActivo] = useState(null);
   const [formatoVideo, setFormatoVideo] = useState('horizontal');
@@ -121,6 +122,7 @@ export default function AreaClientes() {
   const audioElemRef = useRef(null);
   const audioCtxRef = useRef(null);
   const musicIntervalRef = useRef(null);
+  const primerSnapshotRef = useRef(true);
 
   const configMusica = useMemo(() => resolverConfigMusica(clienteActual), [clienteActual]);
   const musicaDisponible = configMusica.modo !== 'ninguna';
@@ -129,7 +131,7 @@ export default function AreaClientes() {
     setFallbackSintetizador(false);
   }, [configMusica.src]);
 
-  // Cargar sesión o autologin desde ?code= y refrescar en vivo desde Firebase
+  // Cargar sesión o autologin desde ?code=
   useEffect(() => {
     const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
     const codeParam = params?.get('code');
@@ -151,8 +153,8 @@ export default function AreaClientes() {
         const yaDejoResena = localStorage.getItem(`resena_${parsed.password}`);
         if (yaDejoResena) setResenaEnviada(true);
 
-        // Actualiza en silencio desde Firebase para ver cambios recientes sin cerrar sesión
-        if (parsed.password) {
+        // Si la sesión previa no tenía ID de documento, lo recuperamos en silencio para activar el tiempo real
+        if (!parsed.id && parsed.password) {
           buscarClientePorCodigo(parsed.password, true);
         }
       } catch (e) {
@@ -160,6 +162,45 @@ export default function AreaClientes() {
       }
     }
   }, []);
+
+  // ======================================================
+  // SINCRONIZACIÓN AUTOMÁTICA EN TIEMPO REAL (onSnapshot)
+  // ======================================================
+  useEffect(() => {
+    if (!clienteActual?.id) return;
+    primerSnapshotRef.current = true;
+
+    const refCliente = doc(db, "clientes", clienteActual.id);
+    const unsubscribe = onSnapshot(
+      refCliente,
+      (docSnap) => {
+        if (!docSnap.exists()) {
+          cerrarSesionCliente();
+          return;
+        }
+
+        const actualizado = { id: docSnap.id, ...docSnap.data() };
+        setClienteActual(actualizado);
+        sessionStorage.setItem('deluces_cliente_actual', JSON.stringify(actualizado));
+
+        // Si se redujeron las fotos mientras el visor estaba abierto, evita error de índice
+        const nuevasFotos = Array.isArray(actualizado.albumFotos) ? actualizado.albumFotos : [];
+        setFotoModalIndex((prev) => (prev !== null && prev >= nuevasFotos.length ? null : prev));
+
+        if (primerSnapshotRef.current) {
+          primerSnapshotRef.current = false;
+        } else {
+          setActualizacionEnVivo(true);
+          setTimeout(() => setActualizacionEnVivo(false), 3500);
+        }
+      },
+      (err) => {
+        console.error("Error en sincronización en tiempo real:", err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [clienteActual?.id]);
 
   const buscarClientePorCodigo = async (codigo, silencioso = false) => {
     const codigoLimpio = codigo.trim();
@@ -176,13 +217,14 @@ export default function AreaClientes() {
 
       let datosEncontrados = null;
       if (!snapExacto.empty) {
-        datosEncontrados = snapExacto.docs[0].data();
+        const d = snapExacto.docs[0];
+        datosEncontrados = { id: d.id, ...d.data() };
       } else {
         const todosSnap = await getDocs(collection(db, "clientes"));
         const coincidencia = todosSnap.docs.find(
           (d) => (d.data().password || '').trim().toLowerCase() === codigoLimpio.toLowerCase()
         );
-        if (coincidencia) datosEncontrados = coincidencia.data();
+        if (coincidencia) datosEncontrados = { id: coincidencia.id, ...coincidencia.data() };
       }
 
       if (datosEncontrados) {
@@ -294,6 +336,27 @@ export default function AreaClientes() {
       setMusicaReproduciendo(true);
     }
   };
+
+  // Si cambias la canción desde el panel mientras está sonando, cambia en vivo
+  useEffect(() => {
+    if (!musicaReproduciendo) return;
+    if (configMusica.modo === 'ninguna') {
+      detenerTodaLaMusica();
+      return;
+    }
+    if (configMusica.modo === 'audio' && configMusica.src && audioElemRef.current) {
+      detenerSintetizador();
+      audioElemRef.current.load();
+      audioElemRef.current.volume = 0.65;
+      audioElemRef.current.play().catch(() => {
+        setFallbackSintetizador(true);
+        iniciarSintetizador();
+      });
+    } else if (configMusica.modo === 'sintetizador') {
+      if (audioElemRef.current) audioElemRef.current.pause();
+      iniciarSintetizador();
+    }
+  }, [configMusica.modo, configMusica.src]);
 
   const toggleMusica = () => {
     if (musicaReproduciendo) {
@@ -491,6 +554,13 @@ export default function AreaClientes() {
 
   return (
     <div className="min-h-screen df-bg pt-12 pb-20 px-6">
+      {/* Aviso discreto cuando llegan cambios en vivo desde el panel */}
+      {actualizacionEnVivo && (
+        <div className="fixed bottom-6 right-6 z-[120] bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-2xl flex items-center gap-2 animate-fade-in">
+          <Sparkles size={14} /> Álbum actualizado en vivo
+        </div>
+      )}
+
       {configMusica.modo === 'audio' && configMusica.src && (
         <audio
           ref={audioElemRef}

@@ -10,7 +10,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { db } from '@/lib/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 
 // ==========================================
 // COMPONENTE DE TARJETA 3D
@@ -234,21 +234,22 @@ export default function Home() {
     setIsDarkMode(savedTheme);
     document.documentElement.classList.toggle('dark', savedTheme);
 
-    const cargarTestimonios = async () => {
-      try {
-        const snap = await getDocs(collection(db, "testimonios"));
+    const unsubscribe = onSnapshot(
+      collection(db, "testimonios"),
+      (snap) => {
         const lista = snap.docs
-          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .map(d => ({ id: d.id, ...d.data() }))
           .filter(t => t.comentario && t.comentario.trim() !== '')
           .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
           .slice(0, 9);
         setTestimonios(lista);
-      } catch (err) {
-        console.error("Error cargando testimonios:", err);
+      },
+      (err) => {
+        console.error("Error cargando testimonios en tiempo real:", err);
       }
-    };
+    );
 
-    cargarTestimonios();
+    return () => unsubscribe();
   }, []);
 
   // Aplicar clases del Tema

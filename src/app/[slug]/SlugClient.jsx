@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import {
   ArrowLeft, Play, X, ChevronLeft, ChevronRight,
   FolderOpen, Camera, Video, Send, Images, Sparkles
@@ -54,7 +54,6 @@ const infoCategorias = {
   },
 };
 
-// Reescribe cualquier enlace de Drive (incluso los guardados con sz=w1600) al tamaño exacto necesario
 const formatearImagenUrl = (url, ancho = 600) => {
   if (!url) return '/institucional.jpg';
   if (url.includes('drive.google.com/file/d/')) {
@@ -82,6 +81,10 @@ const obtenerLinkEmbed = (url) => {
     const id = url.split('shorts/')[1]?.split('?')[0];
     return `https://www.youtube.com/embed/${id}?rel=0`;
   }
+  if (url.includes('youtube.com/live/')) {
+    const id = url.split('live/')[1]?.split('?')[0];
+    return `https://www.youtube.com/embed/${id}?rel=0`;
+  }
   if (url.includes('drive.google.com/file/d/')) {
     const id = url.split('/d/')[1]?.split('/')[0];
     return `https://drive.google.com/file/d/${id}/preview`;
@@ -96,7 +99,6 @@ export default function SlugClient({ slug }) {
   const [indiceModal, setIndiceModal] = useState(null);
   const [touchStartX, setTouchStartX] = useState(null);
 
-  // Formulario de cotización rápida
   const [nombre, setNombre] = useState('');
   const [mensaje, setMensaje] = useState('');
 
@@ -106,34 +108,30 @@ export default function SlugClient({ slug }) {
     etiqueta: 'PORTAFOLIO',
   };
 
+  // Escucha en tiempo real de la galería de esta categoría
   useEffect(() => {
-    let activo = true;
-    const cargarGaleria = async () => {
-      setCargando(true);
-      try {
-        const q = query(collection(db, 'galerias'), where('slug', '==', slug));
-        const snapshot = await getDocs(q);
-        if (!activo) return;
+    setCargando(true);
+    const q = query(collection(db, 'galerias'), where('slug', '==', slug));
 
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
         const items = snapshot.docs
           .map((d) => ({ id: d.id, ...d.data() }))
           .sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0));
 
         setTrabajos(items);
-      } catch (error) {
-        console.error('Error cargando galería:', error);
-      } finally {
-        if (activo) setCargando(false);
+        setCargando(false);
+      },
+      (error) => {
+        console.error('Error escuchando galería en tiempo real:', error);
+        setCargando(false);
       }
-    };
+    );
 
-    cargarGaleria();
-    return () => {
-      activo = false;
-    };
+    return () => unsubscribe();
   }, [slug]);
 
-  // Agrupar trabajos por carpeta (institución / evento) si existen carpetas definidas
   const { tieneCarpetas, gruposCarpetas } = useMemo(() => {
     const hayNombradas = trabajos.some((t) => t.carpeta && t.carpeta.trim() !== '');
     if (!hayNombradas) {
@@ -164,13 +162,26 @@ export default function SlugClient({ slug }) {
     return { tieneCarpetas: true, gruposCarpetas: grupos };
   }, [trabajos]);
 
-  // Lista visible actualmente (o todos si no hay carpetas, o los de la carpeta abierta)
+  // Si se borra o renombra la carpeta activa en vivo, volvemos limpiamente a la lista
+  useEffect(() => {
+    if (carpetaActiva && tieneCarpetas && !gruposCarpetas.some((g) => g.nombre === carpetaActiva)) {
+      setCarpetaActiva(null);
+      setIndiceModal(null);
+    }
+  }, [carpetaActiva, tieneCarpetas, gruposCarpetas]);
+
   const trabajosVisibles = useMemo(() => {
     if (!tieneCarpetas) return trabajos;
     if (!carpetaActiva) return [];
     const grupo = gruposCarpetas.find((g) => g.nombre === carpetaActiva);
     return grupo ? grupo.items : [];
   }, [tieneCarpetas, carpetaActiva, gruposCarpetas, trabajos]);
+
+  useEffect(() => {
+    if (indiceModal !== null && indiceModal >= trabajosVisibles.length) {
+      setIndiceModal(null);
+    }
+  }, [indiceModal, trabajosVisibles.length]);
 
   const trabajoSeleccionado =
     indiceModal !== null ? trabajosVisibles[indiceModal] || null : null;
@@ -187,7 +198,6 @@ export default function SlugClient({ slug }) {
     setIndiceModal((prev) => (prev - 1 + trabajosVisibles.length) % trabajosVisibles.length);
   };
 
-  // Precargar la siguiente imagen en HD (w1600) cuando el visor está abierto
   useEffect(() => {
     if (indiceModal === null || trabajosVisibles.length <= 1) return;
     const siguiente = trabajosVisibles[(indiceModal + 1) % trabajosVisibles.length];
@@ -197,7 +207,6 @@ export default function SlugClient({ slug }) {
     }
   }, [indiceModal, trabajosVisibles]);
 
-  // Controles de teclado en el visor modal
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (indiceModal === null) return;
@@ -222,7 +231,6 @@ export default function SlugClient({ slug }) {
 
   return (
     <div className="min-h-screen df-bg df-text pb-24">
-      {/* BARRA SUPERIOR */}
       <header className="sticky top-0 z-40 df-bg/90 backdrop-blur-md border-b df-border px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
           {carpetaActiva ? (
@@ -255,7 +263,6 @@ export default function SlugClient({ slug }) {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 pt-12 space-y-14">
-        {/* ENCABEZADO DE LA CATEGORÍA O CARPETA ACTIVA */}
         <div className="text-center max-w-3xl mx-auto space-y-3">
           <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-600 bg-amber-600/10 px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5">
             <Sparkles size={12} /> {carpetaActiva ? info.titulo : info.etiqueta}
@@ -270,7 +277,6 @@ export default function SlugClient({ slug }) {
           </p>
         </div>
 
-        {/* ESTADO DE CARGA (SKELETON LIGERO) */}
         {cargando ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -289,9 +295,6 @@ export default function SlugClient({ slug }) {
             </p>
           </div>
         ) : mostrarGridCarpetas ? (
-          /* ==================================================== */
-          /* VISTA 1: TARJETAS DE CARPETAS / INSTITUCIONES        */
-          /* ==================================================== */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {gruposCarpetas.map((grupo) => (
               <button
@@ -318,7 +321,6 @@ export default function SlugClient({ slug }) {
                     {grupo.items.length} {grupo.items.length === 1 ? 'archivo' : 'archivos'}
                   </div>
 
-                  {/* Miniaturas circulares rápidas (w120) */}
                   <div className="absolute bottom-3.5 left-4 right-4 flex items-end justify-between gap-2">
                     <div className="flex -space-x-2">
                       {grupo.miniaturas.map((thumb, idx) => (
@@ -363,9 +365,6 @@ export default function SlugClient({ slug }) {
             ))}
           </div>
         ) : (
-          /* ==================================================== */
-          /* VISTA 2: CUADRÍCULA DE FOTOS Y VIDEOS (w600)         */
-          /* ==================================================== */
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5">
             {trabajosVisibles.map((trabajo, idx) => {
               const esVideo = Boolean(trabajo.videoUrl);
@@ -395,7 +394,6 @@ export default function SlugClient({ slug }) {
                     </div>
                   )}
 
-                  {/* Insignia limpia sin duplicar nombre de institución */}
                   <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-white bg-black/55 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10">
                       {esVideo ? `VIDEO #${idx + 1}` : `FOTOGRAFÍA #${idx + 1}`}
@@ -407,7 +405,6 @@ export default function SlugClient({ slug }) {
           </div>
         )}
 
-        {/* FORMULARIO DE COTIZACIÓN PRE-SELECCIONADO */}
         <section
           id="cotizar-categoria"
           className="df-card border df-border rounded-3xl p-6 sm:p-10 shadow-xl max-w-3xl mx-auto"
@@ -451,9 +448,6 @@ export default function SlugClient({ slug }) {
         </section>
       </main>
 
-      {/* ==================================================== */}
-      {/* VISOR MODAL PANTALLA COMPLETA (HD w1600 + VIDEO 3x)  */}
-      {/* ==================================================== */}
       {trabajoSeleccionado && (
         <div
           onClick={() => setIndiceModal(null)}
@@ -467,7 +461,6 @@ export default function SlugClient({ slug }) {
           }}
           className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-fade-in"
         >
-          {/* Barra superior */}
           <div
             onClick={(e) => e.stopPropagation()}
             className="absolute top-4 left-4 right-4 flex justify-between items-center z-50"
@@ -487,7 +480,6 @@ export default function SlugClient({ slug }) {
             </button>
           </div>
 
-          {/* Botones Anterior / Siguiente */}
           {trabajosVisibles.length > 1 && (
             <>
               <button
@@ -509,7 +501,6 @@ export default function SlugClient({ slug }) {
             </>
           )}
 
-          {/* Contenido Principal: Video (Escalado 300%) o Foto en HD (w1600) */}
           <div
             onClick={(e) => e.stopPropagation()}
             className="w-full flex items-center justify-center px-2 sm:px-10"
