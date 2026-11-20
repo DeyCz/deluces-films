@@ -22,30 +22,29 @@ const crearUrlWhatsApp = (telefono, texto) => {
   return `https://api.whatsapp.com/send?text=${textoCodificado}`;
 };
 
-// Reescribe tanto links /file/d/ como thumbnails ya guardados con sz=w1600 para cargar rápido
+const extraerIdArchivoDrive = (url) => {
+  if (!url) return null;
+  if (url.includes('drive.google.com/file/d/')) {
+    return url.split('/d/')[1]?.split('/')[0] || null;
+  }
+  if (url.includes('drive.google.com') && !url.includes('/folders/')) {
+    const match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+};
+
 const formatearImagenDrive = (url, ancho = 600) => {
   if (!url) return '/institucional.jpg';
-  if (url.includes('drive.google.com/file/d/')) {
-    const id = url.split('/d/')[1]?.split('/')[0];
-    if (id) return `https://drive.google.com/thumbnail?id=${id}&sz=w${ancho}`;
-  }
-  if (url.includes('drive.google.com/thumbnail?id=')) {
-    const id = url.split('id=')[1]?.split('&')[0];
-    if (id) return `https://drive.google.com/thumbnail?id=${id}&sz=w${ancho}`;
-  }
+  const id = extraerIdArchivoDrive(url);
+  if (id) return `https://drive.google.com/thumbnail?id=${id}&sz=w${ancho}`;
   return url;
 };
 
 const obtenerLinkDescargaFoto = (url) => {
   if (!url) return '#';
-  if (url.includes('drive.google.com/thumbnail?id=')) {
-    const id = url.split('id=')[1]?.split('&')[0];
-    if (id) return `https://drive.google.com/uc?export=download&id=${id}`;
-  }
-  if (url.includes('drive.google.com/file/d/')) {
-    const id = url.split('/d/')[1]?.split('/')[0];
-    if (id) return `https://drive.google.com/uc?export=download&id=${id}`;
-  }
+  const id = extraerIdArchivoDrive(url);
+  if (id) return `https://drive.google.com/uc?export=download&id=${id}`;
   return url;
 };
 
@@ -63,9 +62,13 @@ const obtenerEmbedVideo = (url) => {
     const id = url.split('shorts/')[1]?.split('?')[0];
     return `https://www.youtube.com/embed/${id}?rel=0`;
   }
-  if (url.includes('drive.google.com/file/d/')) {
-    const id = url.split('/d/')[1]?.split('/')[0];
-    return `https://drive.google.com/file/d/${id}/preview`;
+  if (url.includes('youtube.com/live/')) {
+    const id = url.split('live/')[1]?.split('?')[0];
+    return `https://www.youtube.com/embed/${id}?rel=0`;
+  }
+  const driveId = extraerIdArchivoDrive(url);
+  if (driveId) {
+    return `https://drive.google.com/file/d/${driveId}/preview`;
   }
   return null;
 };
@@ -80,13 +83,9 @@ const resolverConfigMusica = (cliente) => {
   const titulo = (cliente.musicaTitulo || '').trim();
 
   if (url) {
-    if (url.includes('drive.google.com/file/d/')) {
-      const id = url.split('/d/')[1]?.split('/')[0];
-      if (id) return { modo: 'audio', src: `/api/audio?id=${id}`, titulo: titulo || 'Música del Álbum' };
-    }
-    if (url.includes('drive.google.com') && url.includes('id=')) {
-      const id = url.split('id=')[1]?.split('&')[0];
-      if (id) return { modo: 'audio', src: `/api/audio?id=${id}`, titulo: titulo || 'Música del Álbum' };
+    const driveId = extraerIdArchivoDrive(url);
+    if (driveId) {
+      return { modo: 'audio', src: `/api/audio?id=${driveId}`, titulo: titulo || 'Música del Álbum' };
     }
     return { modo: 'audio', src: url, titulo: titulo || 'Música del Álbum' };
   }
@@ -101,11 +100,9 @@ export default function AreaClientes() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState(false);
 
-  // Reproductor de video
   const [videoActivo, setVideoActivo] = useState(null);
   const [formatoVideo, setFormatoVideo] = useState('horizontal');
 
-  // Estados del Álbum Digital Interactivo
   const [favoritas, setFavoritas] = useState([]);
   const [soloFavoritas, setSoloFavoritas] = useState(false);
   const [fotoModalIndex, setFotoModalIndex] = useState(null);
@@ -114,7 +111,6 @@ export default function AreaClientes() {
   const [fallbackSintetizador, setFallbackSintetizador] = useState(false);
   const [touchStartX, setTouchStartX] = useState(null);
 
-  // Estados de Reseña / Testimonio al descargar
   const [modalResenaAbierto, setModalResenaAbierto] = useState(false);
   const [estrellas, setEstrellas] = useState(5);
   const [comentarioResena, setComentarioResena] = useState('');
@@ -122,7 +118,6 @@ export default function AreaClientes() {
   const [enviandoResena, setEnviandoResena] = useState(false);
   const [resenaEnviada, setResenaEnviada] = useState(false);
 
-  // Referencias de audio (MP3 real + sintetizador de respaldo)
   const audioElemRef = useRef(null);
   const audioCtxRef = useRef(null);
   const musicIntervalRef = useRef(null);
@@ -134,8 +129,17 @@ export default function AreaClientes() {
     setFallbackSintetizador(false);
   }, [configMusica.src]);
 
-  // Cargar sesión o autologin desde ?code=
+  // Cargar sesión o autologin desde ?code= y refrescar en vivo desde Firebase
   useEffect(() => {
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const codeParam = params?.get('code');
+
+    if (codeParam) {
+      setPasswordInput(codeParam);
+      buscarClientePorCodigo(codeParam);
+      return;
+    }
+
     const savedClient = sessionStorage.getItem('deluces_cliente_actual');
     if (savedClient) {
       try {
@@ -146,27 +150,25 @@ export default function AreaClientes() {
         if (savedFavs) setFavoritas(JSON.parse(savedFavs));
         const yaDejoResena = localStorage.getItem(`resena_${parsed.password}`);
         if (yaDejoResena) setResenaEnviada(true);
+
+        // Actualiza en silencio desde Firebase para ver cambios recientes sin cerrar sesión
+        if (parsed.password) {
+          buscarClientePorCodigo(parsed.password, true);
+        }
       } catch (e) {
         sessionStorage.removeItem('deluces_cliente_actual');
       }
     }
-
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const codeParam = params.get('code');
-      if (codeParam) {
-        setPasswordInput(codeParam);
-        buscarClientePorCodigo(codeParam);
-      }
-    }
   }, []);
 
-  const buscarClientePorCodigo = async (codigo) => {
+  const buscarClientePorCodigo = async (codigo, silencioso = false) => {
     const codigoLimpio = codigo.trim();
     if (!codigoLimpio) return;
 
-    setCargando(true);
-    setError(false);
+    if (!silencioso) {
+      setCargando(true);
+      setError(false);
+    }
 
     try {
       const qExacto = query(collection(db, "clientes"), where("password", "==", codigoLimpio));
@@ -191,14 +193,14 @@ export default function AreaClientes() {
         setFavoritas(savedFavs ? JSON.parse(savedFavs) : []);
         const yaDejoResena = localStorage.getItem(`resena_${datosEncontrados.password}`);
         setResenaEnviada(Boolean(yaDejoResena));
-      } else {
+      } else if (!silencioso) {
         setError(true);
       }
     } catch (err) {
       console.error("Error buscando cliente:", err);
-      setError(true);
+      if (!silencioso) setError(true);
     } finally {
-      setCargando(false);
+      if (!silencioso) setCargando(false);
     }
   };
 
@@ -207,9 +209,6 @@ export default function AreaClientes() {
     await buscarClientePorCodigo(passwordInput);
   };
 
-  // ======================================================
-  // MOTOR DE MÚSICA (MP3 PERSONALIZADO + RESPALDO PIANO)
-  // ======================================================
   const detenerSintetizador = () => {
     if (musicIntervalRef.current) {
       clearInterval(musicIntervalRef.current);
@@ -285,7 +284,6 @@ export default function AreaClientes() {
           setMusicaReproduciendo(true);
         })
         .catch(() => {
-          // Si falla la pista externa, cae al piano ambiental para no dejar silencio
           setFallbackSintetizador(true);
           iniciarSintetizador();
           setMusicaReproduciendo(true);
@@ -305,14 +303,12 @@ export default function AreaClientes() {
     }
   };
 
-  // Pausar música automáticamente si el cliente abre un video
   useEffect(() => {
     if (videoActivo && musicaReproduciendo) {
       detenerTodaLaMusica();
     }
   }, [videoActivo]);
 
-  // Limpiar audio al desmontar
   useEffect(() => {
     return () => {
       detenerSintetizador();
@@ -331,7 +327,6 @@ export default function AreaClientes() {
 
   const fotosDelAlbum = Array.isArray(clienteActual?.albumFotos) ? clienteActual.albumFotos : [];
 
-  // Precargar la siguiente foto en pantalla completa para que el pase sea instantáneo
   useEffect(() => {
     if (fotoModalIndex === null || fotosDelAlbum.length <= 1) return;
     const siguienteIdx = (fotoModalIndex + 1) % fotosDelAlbum.length;
@@ -410,7 +405,6 @@ export default function AreaClientes() {
     setFotoModalIndex(prev => (prev - 1 + fotosDelAlbum.length) % fotosDelAlbum.length);
   };
 
-  // Modo Presentación Automática (Slideshow)
   useEffect(() => {
     if (!modoPresentacion || fotoModalIndex === null || fotosDelAlbum.length <= 1) return;
     const timer = setInterval(() => {
@@ -419,7 +413,6 @@ export default function AreaClientes() {
     return () => clearInterval(timer);
   }, [modoPresentacion, fotoModalIndex, fotosDelAlbum.length]);
 
-  // Teclado en el Álbum
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (fotoModalIndex === null) return;
@@ -447,7 +440,6 @@ export default function AreaClientes() {
     setModoPresentacion(false);
   };
 
-  // VISTA DE LOGIN
   if (!clienteActual) {
     return (
       <div className="min-h-screen df-bg flex items-center justify-center p-6 relative">
@@ -497,10 +489,8 @@ export default function AreaClientes() {
     ...(Array.isArray(clienteActual.enlacesExtra) ? clienteActual.enlacesExtra.filter(item => item?.url) : [])
   ];
 
-  // VISTA DE CLIENTE AUTENTICADO
   return (
     <div className="min-h-screen df-bg pt-12 pb-20 px-6">
-      {/* Reproductor HTML5 oculto para música MP3 personalizada */}
       {configMusica.modo === 'audio' && configMusica.src && (
         <audio
           ref={audioElemRef}
@@ -691,7 +681,6 @@ export default function AreaClientes() {
                   </div>
                 </div>
 
-                {/* Reproductor con Escalado Virtual 3x (barra delgada de PC en celular) + máscara en esquina */}
                 <div
                   className={
                     formatoVideo === 'horizontal'
@@ -728,9 +717,7 @@ export default function AreaClientes() {
           </div>
         </div>
 
-        {/* ==================================================== */}
-        {/* SECCIÓN: ÁLBUM DIGITAL INTERACTIVO DE FOTOS          */}
-        {/* ==================================================== */}
+        {/* ÁLBUM DIGITAL INTERACTIVO DE FOTOS */}
         {fotosDelAlbum.length > 0 && (
           <div className="df-card border df-border rounded-3xl p-6 md:p-8 shadow-xl space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b df-border pb-5">
@@ -771,7 +758,6 @@ export default function AreaClientes() {
               </div>
             </div>
 
-            {/* CUADRÍCULA DEL ÁLBUM (MINIATURAS RÁPIDAS w600) */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-4">
               {fotosDelAlbum.map((fotoUrl, index) => {
                 const esFav = favoritas.includes(index);
@@ -788,6 +774,7 @@ export default function AreaClientes() {
                       alt={`Foto ${index + 1}`} 
                       loading="lazy"
                       decoding="async"
+                      onError={(e) => { e.currentTarget.src = '/institucional.jpg'; }}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-60 group-hover:opacity-90 transition-opacity" />
@@ -813,7 +800,7 @@ export default function AreaClientes() {
           </div>
         )}
 
-        {/* BANNER DE UPSELLING: CUADRO FÍSICO O ÁLBUM IMPRESO */}
+        {/* BANNER DE UPSELLING */}
         <div className="df-card border-2 border-amber-600/40 rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
             <div>
@@ -906,9 +893,7 @@ export default function AreaClientes() {
 
       </div>
 
-      {/* ==================================================== */}
-      {/* VISOR DE PANTALLA COMPLETA (HD w1600 + MÚSICA)       */}
-      {/* ==================================================== */}
+      {/* VISOR DE PANTALLA COMPLETA */}
       {fotoModalIndex !== null && fotosDelAlbum[fotoModalIndex] && (
         <div 
           onClick={cerrarVisorFotos}
@@ -922,7 +907,6 @@ export default function AreaClientes() {
           }}
           className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-fade-in"
         >
-          {/* Barra Superior del Visor */}
           <div onClick={(e) => e.stopPropagation()} className="absolute top-4 left-4 right-4 flex flex-wrap justify-between items-center gap-2 z-50">
             <span className="text-xs font-bold text-white/80 bg-white/10 px-3 py-1.5 rounded-full backdrop-blur-md">
               Foto #{fotoModalIndex + 1} de {fotosDelAlbum.length}
@@ -1010,13 +994,14 @@ export default function AreaClientes() {
               src={formatearImagenDrive(fotosDelAlbum[fotoModalIndex], 1600)}
               alt={`Foto ${fotoModalIndex + 1}`}
               decoding="async"
+              onError={(e) => { e.currentTarget.src = '/institucional.jpg'; }}
               className="max-h-[78vh] w-auto max-w-full object-contain rounded-xl shadow-2xl select-none"
             />
           </div>
         </div>
       )}
 
-      {/* MODAL DE RESEÑA / TESTIMONIO AL DESCARGAR */}
+      {/* MODAL DE RESEÑA */}
       {modalResenaAbierto && (
         <div 
           onClick={() => setModalResenaAbierto(false)}

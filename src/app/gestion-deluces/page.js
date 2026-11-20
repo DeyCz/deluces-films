@@ -23,6 +23,15 @@ const PRESETS_MUSICA = [
   { id: 'ninguna', label: 'Sin música de fondo', url: '', titulo: '' },
 ];
 
+const esLinkCarpetaDrive = (url) => {
+  if (!url) return false;
+  const limpia = url.trim();
+  return (
+    limpia.includes('drive.google.com') &&
+    (limpia.includes('/folders/') || /[?&]id=[a-zA-Z0-9_-]+/.test(limpia))
+  );
+};
+
 const normalizarImagenUrl = (url, ancho = 1600) => {
   if (!url) return '';
   const limpia = url.trim();
@@ -33,6 +42,10 @@ const normalizarImagenUrl = (url, ancho = 1600) => {
   if (limpia.includes('drive.google.com/thumbnail?id=')) {
     const fileId = limpia.split('id=')[1]?.split('&')[0];
     if (fileId) return `https://drive.google.com/thumbnail?id=${fileId}&sz=w${ancho}`;
+  }
+  if (limpia.includes('drive.google.com') && /[?&]id=([a-zA-Z0-9_-]+)/.test(limpia) && !limpia.includes('/folders/')) {
+    const match = limpia.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (match?.[1]) return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w${ancho}`;
   }
   return limpia;
 };
@@ -76,7 +89,7 @@ export default function AdminPage() {
   // Tema y Navegación por Pestañas
   const [mounted, setMounted] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
-  const [tabActiva, setTabActiva] = useState('clientes'); // 'clientes' | 'portafolio' | 'resenas'
+  const [tabActiva, setTabActiva] = useState('clientes');
   
   // ESTADOS CLIENTES
   const clienteInicial = { 
@@ -148,7 +161,7 @@ export default function AdminPage() {
     return () => unsubscribe();
   }, []);
 
-  // CARGA BLINDADA: Si falla una colección (ej. permisos en testimonios), las demás SÍ cargan
+  // CARGA BLINDADA: Cada colección carga independientemente
   const cargarDatos = async () => {
     setRefrescando(true);
     setErroresCarga([]);
@@ -247,10 +260,18 @@ export default function AdminPage() {
     return data.archivos;
   };
 
+  // Extrae fotos desde el link pegado en la caja del álbum (si es carpeta) o desde el driveLink principal
   const importarCarpetaAlAlbumCliente = async () => {
-    const urlAExtraer = formCliente.driveLink.trim();
-    if (!urlAExtraer || !urlAExtraer.includes('/folders/')) {
-      alert('Primero pega el enlace de una carpeta de Google Drive en el campo "Link Principal de Google Drive".');
+    const textoCaja = (formCliente.albumFotosTexto || '').trim();
+    const usarCajaComoOrigen =
+      textoCaja.split('\n').length === 1 && esLinkCarpetaDrive(textoCaja);
+
+    const urlAExtraer = usarCajaComoOrigen ? textoCaja : formCliente.driveLink.trim();
+
+    if (!esLinkCarpetaDrive(urlAExtraer)) {
+      alert(
+        'Primero pega el enlace de una carpeta de Google Drive en el campo "Link de la Carpeta de Google Drive" (o pega el link de tu subcarpeta de fotos dentro de la caja del Álbum Digital).'
+      );
       return;
     }
 
@@ -258,8 +279,14 @@ export default function AdminPage() {
     try {
       const archivos = await extraerArchivosDeCarpetaDrive(urlAExtraer);
       const soloFotos = archivos.filter(a => !a.esVideo).map(a => a.imagenUrl);
+      const cantVideos = archivos.filter(a => a.esVideo).length;
+
       if (soloFotos.length === 0) {
-        alert('No se encontraron fotografías en esa carpeta.');
+        alert(
+          cantVideos > 0
+            ? `Se encontraron ${cantVideos} videos en esa carpeta, pero ninguna fotografía. Si las fotos están en otra subcarpeta, pega ese link aquí y vuelve a extraer.`
+            : 'No se encontraron fotografías en esa carpeta.'
+        );
         return;
       }
 
@@ -269,7 +296,9 @@ export default function AdminPage() {
         albumFotosTexto: soloFotos.join('\n')
       }));
 
-      alert(`¡Genial! Se extrajeron ${soloFotos.length} fotos automáticamente de la carpeta de Drive para el Álbum Digital.`);
+      alert(
+        `¡Listo! Se extrajeron ${soloFotos.length} fotos automáticamente para el Álbum Digital.`
+      );
     } catch (err) {
       alert(err.message);
     } finally {
@@ -320,10 +349,11 @@ export default function AdminPage() {
     e.preventDefault();
     setCargandoCliente(true);
     try {
-      let textoAlbum = formCliente.albumFotosTexto || '';
+      let textoAlbum = (formCliente.albumFotosTexto || '').trim();
 
-      if (textoAlbum.trim().includes('drive.google.com/drive/folders/') && textoAlbum.trim().split('\n').length === 1) {
-        const archivos = await extraerArchivosDeCarpetaDrive(textoAlbum.trim());
+      // Si pegó un link de carpeta de Drive (incluyendo /u/0/folders/) dentro del álbum, lo expandimos
+      if (textoAlbum.split('\n').length === 1 && esLinkCarpetaDrive(textoAlbum)) {
+        const archivos = await extraerArchivosDeCarpetaDrive(textoAlbum);
         textoAlbum = archivos.filter(a => !a.esVideo).map(a => a.imagenUrl).join('\n');
       }
 
@@ -332,7 +362,10 @@ export default function AdminPage() {
         .map(linea => normalizarImagenUrl(linea))
         .filter(url => url !== '');
 
-      const portadaFinal = normalizarImagenUrl(formCliente.previewImage) || listaFotosAlbum[0] || '/institucional.jpg';
+      const portadaFinal =
+        normalizarImagenUrl(formCliente.previewImage) ||
+        listaFotosAlbum[0] ||
+        '/institucional.jpg';
 
       const datosLimpios = {
         nombreCliente: formCliente.nombreCliente.trim(),
@@ -434,7 +467,7 @@ export default function AdminPage() {
             })
           )
         );
-        alert(`¡Espectacular! Se importaron automáticamente ${archivos.length} archivos desde la carpeta de Drive hacia "${carpetaLimpia}".`);
+        alert(`¡Espectacular! Se importaron automáticamente ${archivos.length} archivos desde Google Drive hacia "${carpetaLimpia}".`);
       } 
       else if (!editandoFotoId && formGaleria.modoSubida === 'lote') {
         const urls = (formGaleria.loteImagenesTexto || '')
@@ -590,7 +623,6 @@ export default function AdminPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // PANTALLA DE LOGIN
   if (!user) {
     return (
       <div className="min-h-screen df-bg flex items-center justify-center p-6 relative">
@@ -645,7 +677,6 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen df-bg pb-20">
-      {/* BARRA SUPERIOR FIJA */}
       <header className="sticky top-0 z-40 df-bg/90 backdrop-blur-md border-b df-border px-6 py-4">
         <div className="max-w-6xl mx-auto flex flex-wrap justify-between items-center gap-4">
           <div className="flex items-center gap-3">
@@ -703,7 +734,6 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 pt-8 space-y-8">
-        {/* ALERTA DE DIAGNÓSTICO (Solo aparece si Firebase rechaza alguna colección) */}
         {erroresCarga.length > 0 && (
           <div className="p-4 rounded-2xl border border-red-500/40 bg-red-500/10 flex items-start gap-3">
             <AlertTriangle size={20} className="text-red-500 flex-shrink-0 mt-0.5" />
@@ -723,7 +753,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* TARJETAS RESUMEN (KPIs) */}
+        {/* TARJETAS RESUMEN */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <button
             type="button"
@@ -796,9 +826,7 @@ export default function AdminPage() {
             type="button"
             onClick={() => setTabActiva('clientes')}
             className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              tabActiva === 'clientes'
-                ? 'bg-amber-600 text-white shadow-md'
-                : 'df-muted hover:df-text'
+              tabActiva === 'clientes' ? 'bg-amber-600 text-white shadow-md' : 'df-muted hover:df-text'
             }`}
           >
             <Users size={15} /> Clientes y Álbumes ({listaClientes.length})
@@ -807,9 +835,7 @@ export default function AdminPage() {
             type="button"
             onClick={() => setTabActiva('portafolio')}
             className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              tabActiva === 'portafolio'
-                ? 'bg-amber-600 text-white shadow-md'
-                : 'df-muted hover:df-text'
+              tabActiva === 'portafolio' ? 'bg-amber-600 text-white shadow-md' : 'df-muted hover:df-text'
             }`}
           >
             <FolderOpen size={15} /> Portafolio Web ({listaGaleria.length})
@@ -818,21 +844,16 @@ export default function AdminPage() {
             type="button"
             onClick={() => setTabActiva('resenas')}
             className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              tabActiva === 'resenas'
-                ? 'bg-amber-600 text-white shadow-md'
-                : 'df-muted hover:df-text'
+              tabActiva === 'resenas' ? 'bg-amber-600 text-white shadow-md' : 'df-muted hover:df-text'
             }`}
           >
             <Star size={15} /> Reseñas ({listaTestimonios.length})
           </button>
         </div>
 
-        {/* ====================================================== */}
-        {/* PESTAÑA 1: CLIENTES Y ÁLBUMES DIGITALES                */}
-        {/* ====================================================== */}
+        {/* PESTAÑA 1: CLIENTES */}
         {tabActiva === 'clientes' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* FORMULARIO CLIENTES */}
             <div className="lg:col-span-6 df-card border df-border p-6 sm:p-8 rounded-3xl shadow-xl">
               <div className="mb-6 flex justify-between items-center">
                 <div>
@@ -878,7 +899,7 @@ export default function AdminPage() {
                     rows="3"
                     value={formCliente.albumFotosTexto}
                     onChange={e => setFormCliente({...formCliente, albumFotosTexto: e.target.value})}
-                    placeholder="Toca el botón de arriba para extraer todas las fotos automáticamente, o pega aquí links de fotos."
+                    placeholder="Toca 'Extraer de Drive' para jalar del Link Principal, o pega aquí el link de la subcarpeta de Fotos y toca el botón."
                     className="w-full df-bg border df-border rounded-xl px-3 py-2 text-xs focus:border-amber-600 df-text outline-none resize-y"
                   />
                 </div>
@@ -968,7 +989,6 @@ export default function AdminPage() {
               </form>
             </div>
 
-            {/* LISTA DE CLIENTES */}
             <div className="lg:col-span-6 df-card border df-border p-6 rounded-3xl shadow-xl space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b df-border">
                 <div>
@@ -1040,12 +1060,9 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ====================================================== */}
-        {/* PESTAÑA 2: PORTAFOLIO WEB Y CARPETAS                   */}
-        {/* ====================================================== */}
+        {/* PESTAÑA 2: PORTAFOLIO */}
         {tabActiva === 'portafolio' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* FORMULARIO PORTAFOLIO */}
             <div className="lg:col-span-6 df-card border df-border p-6 sm:p-8 rounded-3xl shadow-xl">
               <div className="mb-6 flex justify-between items-center">
                 <div>
@@ -1244,7 +1261,6 @@ export default function AdminPage() {
               </form>
             </div>
 
-            {/* LISTA DEL PORTAFOLIO */}
             <div className="lg:col-span-6 df-card border df-border p-6 rounded-3xl shadow-xl space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b df-border">
                 <h3 className="font-bold df-text text-lg">Portafolio Web ({galeriaFiltrada.length})</h3>
@@ -1314,6 +1330,7 @@ export default function AdminPage() {
                           loading="lazy"
                           decoding="async"
                           className="w-full h-full object-cover opacity-85"
+                          onError={(e) => { e.currentTarget.src = '/institucional.jpg'; }}
                         />
                         {foto.videoUrl && <div className="absolute inset-0 flex items-center justify-center"><Video size={14} className="text-white drop-shadow-md"/></div>}
                       </div>
@@ -1343,9 +1360,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ====================================================== */}
-        {/* PESTAÑA 3: RESEÑAS / TESTIMONIOS DE CLIENTES           */}
-        {/* ====================================================== */}
+        {/* PESTAÑA 3: RESEÑAS */}
         {tabActiva === 'resenas' && (
           <div className="df-card border df-border p-6 sm:p-8 rounded-3xl shadow-xl space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b df-border">

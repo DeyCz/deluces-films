@@ -129,7 +129,7 @@ const categoriasTrabajos = [
     id: 4,
     titulo: "Revelación de Género",
     categoria: "SOCIALES",
-    desc: "Emoción, 15 años, cumpleaños y momentos en familia.",
+    desc: "Emoción y momentos en familia.",
     href: "/revelacion-genero",
     accent: "bg-purple-600",
     image: "/revelacion.jpg"
