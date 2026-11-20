@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 const EXTENSIONES_VIDEO = /\.(mp4|mov|webm|mkv|avi|m4v)$/i;
 const EXTENSIONES_IMAGEN = /\.(jpg|jpeg|png|webp|gif|heic|heif|bmp|tiff?)$/i;
 const EXTENSIONES_IGNORAR = /\.(zip|rar|7z|pdf|mp3|wav|m4a|aac|txt|doc|docx|xls|xlsx|psd|ai|raw|cr2|cr3|arw|dng)$/i;
+const REGEX_CARPETA_FOTOS = /foto|photo|imag|galer|album|álbum|sesi[oó]n|retrato/i;
+const REGEX_CARPETA_SOLO_VIDEO = /^(videos?|reels?|film|clips?|pel[ií]cula)$/i;
 
 function extraerInfoCarpeta(url) {
   if (!url) return { folderId: null, resourceKey: null };
@@ -40,6 +42,22 @@ function construirItem(fileId, nombre, esVideo) {
     imagenUrl: `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`,
     videoUrl: esVideo ? `https://drive.google.com/file/d/${fileId}/view` : '',
   };
+}
+
+function filtrarArchivos(archivos, soloFotos) {
+  return soloFotos ? archivos.filter((a) => !a.esVideo) : archivos;
+}
+
+function priorizarSubcarpetas(subcarpetas, soloFotos) {
+  if (!Array.isArray(subcarpetas) || subcarpetas.length === 0) return [];
+  if (!soloFotos) return subcarpetas.slice(0, 5);
+
+  // Si buscamos solo fotos, priorizamos carpetas llamadas "Fotos", "Photos", etc. y evitamos "Videos"
+  const deFotos = subcarpetas.filter((s) => REGEX_CARPETA_FOTOS.test(s.nombre || ''));
+  if (deFotos.length > 0) return deFotos.slice(0, 4);
+
+  const sinVideos = subcarpetas.filter((s) => !REGEX_CARPETA_SOLO_VIDEO.test((s.nombre || '').trim()));
+  return (sinVideos.length > 0 ? sinVideos : subcarpetas).slice(0, 4);
 }
 
 // ==========================================================
@@ -82,7 +100,7 @@ async function listarCarpetaApiV3(folderId, resourceKey, apiKey) {
     for (const file of files) {
       const mime = (file.mimeType || '').toLowerCase();
       if (mime === 'application/vnd.google-apps.folder') {
-        subcarpetas.push({ id: file.id, nombre: file.name || '' });
+        subcarpetas.push({ id: file.id, nombre: file.name || 'Subcarpeta' });
       } else if (mime.startsWith('image/')) {
         archivos.push(construirItem(file.id, file.name, false));
       } else if (mime.startsWith('video/')) {
@@ -97,35 +115,41 @@ async function listarCarpetaApiV3(folderId, resourceKey, apiKey) {
   return { ok: true, status: 200, archivos, subcarpetas };
 }
 
-async function leerConDriveApi(folderId, resourceKey, apiKey) {
+async function leerConDriveApi(folderId, resourceKey, apiKey, soloFotos) {
   const raiz = await listarCarpetaApiV3(folderId, resourceKey, apiKey);
   if (!raiz.ok) return raiz;
 
-  let todos = [...raiz.archivos];
+  let todos = filtrarArchivos(raiz.archivos, soloFotos);
+  let carpetaUsada = null;
 
-  // Si en la raíz solo hay subcarpetas (ej. "Fotos", "Videos"), entramos automáticamente
   if (todos.length === 0 && raiz.subcarpetas.length > 0) {
-    const limiteSubcarpetas = raiz.subcarpetas.slice(0, 6);
-    for (const sub of limiteSubcarpetas) {
+    const candidatas = priorizarSubcarpetas(raiz.subcarpetas, soloFotos);
+    const nombresUsados = [];
+
+    for (const sub of candidatas) {
       const subRes = await listarCarpetaApiV3(sub.id, null, apiKey);
-      if (subRes.ok && subRes.archivos.length > 0) {
-        todos = todos.concat(subRes.archivos);
+      const encontrados = subRes.ok ? filtrarArchivos(subRes.archivos, soloFotos) : [];
+      if (encontrados.length > 0) {
+        todos = todos.concat(encontrados);
+        nombresUsados.push(sub.nombre);
       }
     }
+    if (nombresUsados.length > 0) carpetaUsada = nombresUsados.join(', ');
   }
 
   return {
     ok: true,
     status: 200,
     archivos: ordenarNatural(todos),
+    carpetaUsada,
     teniaSubcarpetas: raiz.subcarpetas.length > 0,
   };
 }
 
 // ==========================================================
-// CAPA 2: EMBEDDEDFOLDERVIEW MEJORADO (FILTRA SUBCARPETAS Y ZIPS)
+// CAPA 2: EMBEDDEDFOLDERVIEW + ENTRADA AUTOMÁTICA A SUBCARPETAS
 // ==========================================================
-async function leerConEmbeddedView(folderId, resourceKey) {
+async function leerEmbeddedDirecto(folderId, resourceKey) {
   const rk = resourceKey ? `&resourcekey=${encodeURIComponent(resourceKey)}` : '';
   const embedUrl = `https://drive.google.com/embeddedfolderview?id=${folderId}${rk}`;
 
@@ -140,23 +164,21 @@ async function leerConEmbeddedView(folderId, resourceKey) {
     cache: 'no-store',
   });
 
-  const esLogin = response.url?.includes('accounts.google.com');
-  if (esLogin) {
-    return { ok: false, privada: true, status: 403, archivos: [] };
+  if (response.url?.includes('accounts.google.com')) {
+    return { ok: false, privada: true, status: 403, archivos: [], subcarpetas: [] };
   }
   if (!response.ok) {
-    return { ok: false, privada: false, status: response.status, archivos: [] };
+    return { ok: false, privada: false, status: response.status, archivos: [], subcarpetas: [] };
   }
 
   const html = await response.text();
   if (html.includes('accounts.google.com/ServiceLogin') || html.includes('Sign in - Google Accounts')) {
-    return { ok: false, privada: true, status: 403, archivos: [] };
+    return { ok: false, privada: true, status: 403, archivos: [], subcarpetas: [] };
   }
 
   const archivosMap = new Map();
-  let encontroSubcarpetas = false;
+  const subcarpetas = [];
 
-  // Divide por cada bloque de entrada para saber con precisión si es carpeta o archivo
   const bloques = html.split(/id="entry-/).slice(1);
   for (const bloque of bloques) {
     const idMatch = bloque.match(/^([a-zA-Z0-9_-]+)"/);
@@ -164,18 +186,17 @@ async function leerConEmbeddedView(folderId, resourceKey) {
     const fileId = idMatch[1];
     if (!fileId || fileId === folderId) continue;
 
-    // Saltar subcarpetas para no meter links rotos en el álbum
+    const titleMatch = bloque.match(/<div class="flip-entry-title">([^<]+)<\/div>/);
+    const nombre = titleMatch ? titleMatch[1].trim() : '';
+
     if (
       bloque.includes('drive.google.com/drive/folders/') ||
       bloque.includes('drive.google.com/folderview') ||
       bloque.includes('/folders/' + fileId)
     ) {
-      encontroSubcarpetas = true;
+      subcarpetas.push({ id: fileId, nombre: nombre || 'Subcarpeta' });
       continue;
     }
-
-    const titleMatch = bloque.match(/<div class="flip-entry-title">([^<]+)<\/div>/);
-    const nombre = titleMatch ? titleMatch[1].trim() : '';
 
     if (nombre && EXTENSIONES_IGNORAR.test(nombre)) continue;
 
@@ -191,15 +212,47 @@ async function leerConEmbeddedView(folderId, resourceKey) {
     ok: true,
     privada: false,
     status: 200,
-    archivos: ordenarNatural(Array.from(archivosMap.values())),
-    teniaSubcarpetas: encontroSubcarpetas,
+    archivos: Array.from(archivosMap.values()),
+    subcarpetas,
+  };
+}
+
+async function leerConEmbeddedView(folderId, resourceKey, soloFotos) {
+  const raiz = await leerEmbeddedDirecto(folderId, resourceKey);
+  if (!raiz.ok) return raiz;
+
+  let todos = filtrarArchivos(raiz.archivos, soloFotos);
+  let carpetaUsada = null;
+
+  if (todos.length === 0 && raiz.subcarpetas.length > 0) {
+    const candidatas = priorizarSubcarpetas(raiz.subcarpetas, soloFotos);
+    const nombresUsados = [];
+
+    for (const sub of candidatas) {
+      const subRes = await leerEmbeddedDirecto(sub.id, null);
+      const encontrados = subRes.ok ? filtrarArchivos(subRes.archivos, soloFotos) : [];
+      if (encontrados.length > 0) {
+        todos = todos.concat(encontrados);
+        nombresUsados.push(sub.nombre);
+      }
+    }
+    if (nombresUsados.length > 0) carpetaUsada = nombresUsados.join(', ');
+  }
+
+  return {
+    ok: true,
+    privada: false,
+    status: 200,
+    archivos: ordenarNatural(todos),
+    carpetaUsada,
+    teniaSubcarpetas: raiz.subcarpetas.length > 0,
   };
 }
 
 // ==========================================================
-// CAPA 3: RESPALDO CON LA PÁGINA PÚBLICA /drive/folders/
+// CAPA 3: PÁGINA PÚBLICA /drive/folders/ + SUBCARPETAS
 // ==========================================================
-async function leerConPaginaPublica(folderId, resourceKey) {
+async function leerPaginaPublicaDirecta(folderId, resourceKey) {
   const rk = resourceKey ? `&resourcekey=${encodeURIComponent(resourceKey)}` : '';
   const publicUrl = `https://drive.google.com/drive/folders/${folderId}?usp=sharing${rk}`;
 
@@ -215,32 +268,33 @@ async function leerConPaginaPublica(folderId, resourceKey) {
   });
 
   if (response.url?.includes('accounts.google.com')) {
-    return { ok: false, privada: true, status: 403, archivos: [] };
+    return { ok: false, privada: true, status: 403, archivos: [], subcarpetas: [] };
   }
   if (!response.ok) {
-    return { ok: false, privada: false, status: response.status, archivos: [] };
+    return { ok: false, privada: false, status: response.status, archivos: [], subcarpetas: [] };
   }
 
   const rawHtml = await response.text();
   if (rawHtml.includes('accounts.google.com/ServiceLogin')) {
-    return { ok: false, privada: true, status: 403, archivos: [] };
+    return { ok: false, privada: true, status: 403, archivos: [], subcarpetas: [] };
   }
 
-  // Decodifica escapes hexadecimales del payload interno _DRIVE_ivd de Google Drive
   const decodificado = rawHtml
     .replace(/\\x22/g, '"')
+    .replace(/\\u0022/g, '"')
+    .replace(/\\"/g, '"')
     .replace(/\\x5b/g, '[')
     .replace(/\\x5d/g, ']')
     .replace(/\\x2f/g, '/')
     .replace(/\\\//g, '/')
-    .replace(/\\u0026/g, '&');
+    .replace(/\\u0026/g, '&')
+    .replace(/\\u003d/g, '=');
 
   const archivosMap = new Map();
-  let encontroSubcarpetas = false;
+  const subcarpetasMap = new Map();
 
-  // Patrón de metadatos reales de Drive: ["FILE_ID",["PARENT_ID"],"NOMBRE","MIME_TYPE"
   const regexDriveMeta =
-    /"([a-zA-Z0-9_-]{20,50})"\s*,\s*\["[^"]*"\]\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"/g;
+    /"([a-zA-Z0-9_-]{20,60})"\s*,\s*(?:\[[^\]]*\]|null)\s*,\s*"([^"\\]+)"\s*,\s*"([^"\\]+)"/g;
 
   let match;
   while ((match = regexDriveMeta.exec(decodificado)) !== null) {
@@ -251,11 +305,8 @@ async function leerConPaginaPublica(folderId, resourceKey) {
     if (!fileId || fileId === folderId) continue;
 
     if (mime === 'application/vnd.google-apps.folder') {
-      encontroSubcarpetas = true;
-      continue;
-    }
-
-    if (mime.startsWith('image/')) {
+      subcarpetasMap.set(fileId, { id: fileId, nombre });
+    } else if (mime.startsWith('image/')) {
       archivosMap.set(fileId, construirItem(fileId, nombre, false));
     } else if (mime.startsWith('video/')) {
       archivosMap.set(fileId, construirItem(fileId, nombre, true));
@@ -266,14 +317,46 @@ async function leerConPaginaPublica(folderId, resourceKey) {
     ok: true,
     privada: false,
     status: 200,
-    archivos: ordenarNatural(Array.from(archivosMap.values())),
-    teniaSubcarpetas: encontroSubcarpetas,
+    archivos: Array.from(archivosMap.values()),
+    subcarpetas: Array.from(subcarpetasMap.values()),
+  };
+}
+
+async function leerConPaginaPublica(folderId, resourceKey, soloFotos) {
+  const raiz = await leerPaginaPublicaDirecta(folderId, resourceKey);
+  if (!raiz.ok) return raiz;
+
+  let todos = filtrarArchivos(raiz.archivos, soloFotos);
+  let carpetaUsada = null;
+
+  if (todos.length === 0 && raiz.subcarpetas.length > 0) {
+    const candidatas = priorizarSubcarpetas(raiz.subcarpetas, soloFotos);
+    const nombresUsados = [];
+
+    for (const sub of candidatas) {
+      const subRes = await leerPaginaPublicaDirecta(sub.id, null);
+      const encontrados = subRes.ok ? filtrarArchivos(subRes.archivos, soloFotos) : [];
+      if (encontrados.length > 0) {
+        todos = todos.concat(encontrados);
+        nombresUsados.push(sub.nombre);
+      }
+    }
+    if (nombresUsados.length > 0) carpetaUsada = nombresUsados.join(', ');
+  }
+
+  return {
+    ok: true,
+    privada: false,
+    status: 200,
+    archivos: ordenarNatural(todos),
+    carpetaUsada,
+    teniaSubcarpetas: raiz.subcarpetas.length > 0,
   };
 }
 
 export async function POST(request) {
   try {
-    const { folderUrl } = await request.json();
+    const { folderUrl, soloFotos = false } = await request.json();
     const { folderId, resourceKey } = extraerInfoCarpeta(folderUrl);
 
     if (!folderId) {
@@ -286,15 +369,16 @@ export async function POST(request) {
     let teniaSubcarpetas = false;
     let bloqueadaPorPrivacidad = false;
 
-    // 1. Intentar con API Oficial de Google Drive (si existe GOOGLE_DRIVE_API_KEY en Vercel)
+    // 1. Capa oficial con GOOGLE_DRIVE_API_KEY (si está configurada en Vercel)
     const apiKey = process.env.GOOGLE_DRIVE_API_KEY?.trim();
     if (apiKey) {
-      const resApi = await leerConDriveApi(folderId, resourceKey, apiKey);
+      const resApi = await leerConDriveApi(folderId, resourceKey, apiKey, soloFotos);
       if (resApi.ok && resApi.archivos.length > 0) {
         return NextResponse.json({
           ok: true,
           origen: 'drive-api',
           folderId,
+          carpetaUsada: resApi.carpetaUsada,
           total: resApi.archivos.length,
           archivos: resApi.archivos,
         });
@@ -302,13 +386,14 @@ export async function POST(request) {
       if (resApi.teniaSubcarpetas) teniaSubcarpetas = true;
     }
 
-    // 2. Intentar con embeddedfolderview mejorado
-    const resEmbed = await leerConEmbeddedView(folderId, resourceKey);
+    // 2. Capa embeddedfolderview (con entrada automática a subcarpetas)
+    const resEmbed = await leerConEmbeddedView(folderId, resourceKey, soloFotos);
     if (resEmbed.ok && resEmbed.archivos.length > 0) {
       return NextResponse.json({
         ok: true,
         origen: 'embedded',
         folderId,
+        carpetaUsada: resEmbed.carpetaUsada,
         total: resEmbed.archivos.length,
         archivos: resEmbed.archivos,
       });
@@ -316,30 +401,20 @@ export async function POST(request) {
     if (resEmbed.teniaSubcarpetas) teniaSubcarpetas = true;
     if (resEmbed.privada) bloqueadaPorPrivacidad = true;
 
-    // 3. Respaldo con página pública /drive/folders/
-    const resPublica = await leerConPaginaPublica(folderId, resourceKey);
+    // 3. Capa página pública /drive/folders/ (con entrada automática a subcarpetas)
+    const resPublica = await leerConPaginaPublica(folderId, resourceKey, soloFotos);
     if (resPublica.ok && resPublica.archivos.length > 0) {
       return NextResponse.json({
         ok: true,
         origen: 'public-html',
         folderId,
+        carpetaUsada: resPublica.carpetaUsada,
         total: resPublica.archivos.length,
         archivos: resPublica.archivos,
       });
     }
     if (resPublica.teniaSubcarpetas) teniaSubcarpetas = true;
     if (resPublica.privada) bloqueadaPorPrivacidad = true;
-
-    // Mensajes de diagnóstico claros según el motivo real
-    if (teniaSubcarpetas) {
-      return NextResponse.json(
-        {
-          error:
-            'Esta carpeta contiene subcarpetas (ej. "Fotos" o "Videos") y no fotos sueltas. Copia y pega el link de la subcarpeta donde están las fotos directamente dentro de la caja del Álbum Digital y vuelve a tocar "Extraer de Drive".',
-        },
-        { status: 404 }
-      );
-    }
 
     if (bloqueadaPorPrivacidad) {
       return NextResponse.json(
@@ -351,11 +426,21 @@ export async function POST(request) {
       );
     }
 
+    if (teniaSubcarpetas) {
+      return NextResponse.json(
+        {
+          error:
+            'Se detectaron subcarpetas pero no se pudieron leer las fotos internas. Pega directamente el link de la subcarpeta de FOTOS en el campo del Álbum Digital y asegúrate de que esté en "Cualquier persona con el enlace".',
+        },
+        { status: 404 }
+      );
+    }
+
     return NextResponse.json(
       {
         error: apiKey
-          ? 'No se encontraron fotos o videos en esta carpeta. Verifica que sea pública ("Cualquier persona con el enlace") y que contenga imágenes.'
-          : 'Google bloqueó la lectura directa desde el servidor o la carpeta no tiene fotos sueltas. Verifica que esté en "Cualquier persona con el enlace" (o agrega tu GOOGLE_DRIVE_API_KEY gratuita en Vercel para extracción sin límites).',
+          ? 'No se encontraron fotografías en esta carpeta. Verifica que tenga permiso "Cualquier persona con el enlace" y contenga imágenes.'
+          : 'Google bloqueó la lectura directa desde Vercel o la carpeta no es pública. Verifica "Cualquier persona con el enlace" (y si persiste, agrega GOOGLE_DRIVE_API_KEY gratuita en Vercel para quitar bloqueos de Google).',
       },
       { status: 403 }
     );

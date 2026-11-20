@@ -86,7 +86,6 @@ export default function AdminPage() {
   const [refrescando, setRefrescando] = useState(false);
   const [erroresCarga, setErroresCarga] = useState([]);
 
-  // Tema y Navegación por Pestañas
   const [mounted, setMounted] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [tabActiva, setTabActiva] = useState('clientes');
@@ -101,6 +100,7 @@ export default function AdminPage() {
     previewImage: '', 
     driveLink: '',
     enlacesExtra: [],
+    albumCarpetaUrl: '',
     albumFotosTexto: '',
     musicaTipo: 'ambiental',
     musicaUrl: '',
@@ -132,10 +132,8 @@ export default function AdminPage() {
   const [editandoFotoId, setEditandoFotoId] = useState(null);
   const [filtroCategoria, setFiltroCategoria] = useState('todas');
 
-  // ESTADOS TESTIMONIOS RECIBIDOS
   const [listaTestimonios, setListaTestimonios] = useState([]);
 
-  // Sincronización de Modo Oscuro / Claro
   useEffect(() => {
     setMounted(true);
     const saved = localStorage.getItem('isDarkMode');
@@ -161,7 +159,6 @@ export default function AdminPage() {
     return () => unsubscribe();
   }, []);
 
-  // CARGA BLINDADA: Cada colección carga independientemente
   const cargarDatos = async () => {
     setRefrescando(true);
     setErroresCarga([]);
@@ -221,6 +218,13 @@ export default function AdminPage() {
     return setCarpetas.size;
   }, [listaGaleria]);
 
+  const cantidadFotosEnFormulario = useMemo(() => {
+    return (formCliente.albumFotosTexto || '')
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l !== '' && !esLinkCarpetaDrive(l)).length;
+  }, [formCliente.albumFotosTexto]);
+
   useEffect(() => {
     if (!editandoFotoId && user) {
       const fotosCategoria = listaGaleria.filter(foto => foto.slug === formGaleria.slug);
@@ -247,58 +251,60 @@ export default function AdminPage() {
     await signOut(auth);
   };
 
-  const extraerArchivosDeCarpetaDrive = async (folderUrl) => {
+  const extraerArchivosDeCarpetaDrive = async (folderUrl, soloFotos = false) => {
     const res = await fetch('/api/drive-folder', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folderUrl })
+      body: JSON.stringify({ folderUrl, soloFotos })
     });
     const data = await res.json();
     if (!res.ok || !data.ok) {
       throw new Error(data.error || 'No se pudo leer la carpeta de Drive.');
     }
-    return data.archivos;
+    return data;
   };
 
-  // Extrae fotos desde el link pegado en la caja del álbum (si es carpeta) o desde el driveLink principal
+  // Prioridad clara: 1) Campo dedicado albumCarpetaUrl -> 2) Link de carpeta pegado en textarea -> 3) Carpeta Principal (busca subcarpeta de fotos)
   const importarCarpetaAlAlbumCliente = async () => {
+    const urlSubcarpetaFotos = (formCliente.albumCarpetaUrl || '').trim();
     const textoCaja = (formCliente.albumFotosTexto || '').trim();
-    const usarCajaComoOrigen =
-      textoCaja.split('\n').length === 1 && esLinkCarpetaDrive(textoCaja);
+    const cajaEsCarpeta = textoCaja.split('\n').length === 1 && esLinkCarpetaDrive(textoCaja);
 
-    const urlAExtraer = usarCajaComoOrigen ? textoCaja : formCliente.driveLink.trim();
+    let urlAExtraer = '';
+    if (esLinkCarpetaDrive(urlSubcarpetaFotos)) {
+      urlAExtraer = urlSubcarpetaFotos;
+    } else if (cajaEsCarpeta) {
+      urlAExtraer = textoCaja;
+    } else if (esLinkCarpetaDrive(formCliente.driveLink)) {
+      urlAExtraer = formCliente.driveLink.trim();
+    }
 
-    if (!esLinkCarpetaDrive(urlAExtraer)) {
-      alert(
-        'Primero pega el enlace de una carpeta de Google Drive en el campo "Link de la Carpeta de Google Drive" (o pega el link de tu subcarpeta de fotos dentro de la caja del Álbum Digital).'
-      );
+    if (!urlAExtraer) {
+      alert('Pega primero el link de la carpeta de FOTOS en el campo "Link de la subcarpeta de FOTOS" (dentro de Álbum Digital Interactivo).');
       return;
     }
 
     setExtrayendoAlbumCliente(true);
     try {
-      const archivos = await extraerArchivosDeCarpetaDrive(urlAExtraer);
-      const soloFotos = archivos.filter(a => !a.esVideo).map(a => a.imagenUrl);
-      const cantVideos = archivos.filter(a => a.esVideo).length;
+      const resultado = await extraerArchivosDeCarpetaDrive(urlAExtraer, true);
+      const soloFotos = (resultado.archivos || []).filter(a => !a.esVideo).map(a => a.imagenUrl);
 
       if (soloFotos.length === 0) {
-        alert(
-          cantVideos > 0
-            ? `Se encontraron ${cantVideos} videos en esa carpeta, pero ninguna fotografía. Si las fotos están en otra subcarpeta, pega ese link aquí y vuelve a extraer.`
-            : 'No se encontraron fotografías en esa carpeta.'
-        );
+        alert('No se encontraron fotografías en esa carpeta. Verifica que tenga fotos adentro y que sea pública ("Cualquier persona con el enlace").');
         return;
       }
 
       setFormCliente(prev => ({
         ...prev,
+        albumCarpetaUrl: prev.albumCarpetaUrl || (cajaEsCarpeta ? textoCaja : urlAExtraer),
         previewImage: prev.previewImage || soloFotos[0],
         albumFotosTexto: soloFotos.join('\n')
       }));
 
-      alert(
-        `¡Listo! Se extrajeron ${soloFotos.length} fotos automáticamente para el Álbum Digital.`
-      );
+      const detalleSubcarpeta = resultado.carpetaUsada
+        ? ` (desde la subcarpeta "${resultado.carpetaUsada}")`
+        : '';
+      alert(`¡Listo! Se extrajeron ${soloFotos.length} fotos automáticamente${detalleSubcarpeta} para el Álbum Digital.`);
     } catch (err) {
       alert(err.message);
     } finally {
@@ -350,11 +356,15 @@ export default function AdminPage() {
     setCargandoCliente(true);
     try {
       let textoAlbum = (formCliente.albumFotosTexto || '').trim();
+      const carpetaFotosUrl = (formCliente.albumCarpetaUrl || '').trim();
 
-      // Si pegó un link de carpeta de Drive (incluyendo /u/0/folders/) dentro del álbum, lo expandimos
-      if (textoAlbum.split('\n').length === 1 && esLinkCarpetaDrive(textoAlbum)) {
-        const archivos = await extraerArchivosDeCarpetaDrive(textoAlbum);
-        textoAlbum = archivos.filter(a => !a.esVideo).map(a => a.imagenUrl).join('\n');
+      // Si pegó link en "Link de la subcarpeta de FOTOS" pero olvidó tocar "Extraer fotos", las extraemos automáticamente al guardar
+      if (!textoAlbum && esLinkCarpetaDrive(carpetaFotosUrl)) {
+        const res = await extraerArchivosDeCarpetaDrive(carpetaFotosUrl, true);
+        textoAlbum = (res.archivos || []).filter(a => !a.esVideo).map(a => a.imagenUrl).join('\n');
+      } else if (textoAlbum.split('\n').length === 1 && esLinkCarpetaDrive(textoAlbum)) {
+        const res = await extraerArchivosDeCarpetaDrive(textoAlbum, true);
+        textoAlbum = (res.archivos || []).filter(a => !a.esVideo).map(a => a.imagenUrl).join('\n');
       }
 
       const listaFotosAlbum = textoAlbum
@@ -376,6 +386,7 @@ export default function AdminPage() {
         previewImage: portadaFinal,
         driveLink: formCliente.driveLink.trim(),
         enlacesExtra: (formCliente.enlacesExtra || []).filter(item => item.url?.trim() !== ''),
+        albumCarpetaUrl: carpetaFotosUrl,
         albumFotos: listaFotosAlbum,
         musicaTipo: formCliente.musicaTipo || 'ambiental',
         musicaUrl: (formCliente.musicaUrl || '').trim(),
@@ -422,6 +433,7 @@ export default function AdminPage() {
       ...cliente,
       telefonoCliente: cliente.telefonoCliente || '',
       enlacesExtra: Array.isArray(cliente.enlacesExtra) ? cliente.enlacesExtra : [],
+      albumCarpetaUrl: cliente.albumCarpetaUrl || '',
       albumFotosTexto: Array.isArray(cliente.albumFotos) ? cliente.albumFotos.join('\n') : '',
       musicaTipo: tipoGuardado,
       musicaUrl: cliente.musicaUrl || '',
@@ -450,7 +462,8 @@ export default function AdminPage() {
           return;
         }
 
-        const archivos = await extraerArchivosDeCarpetaDrive(formGaleria.carpetaDriveUrl);
+        const resultado = await extraerArchivosDeCarpetaDrive(formGaleria.carpetaDriveUrl, false);
+        const archivos = resultado.archivos || [];
         await Promise.all(
           archivos.map((archivo, idx) =>
             addDoc(collection(db, "galerias"), {
@@ -877,29 +890,77 @@ export default function AdminPage() {
                   <input type="text" value={formCliente.tipo} onChange={e => setFormCliente({...formCliente, tipo: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Tipo de Evento" />
                   <input type="text" value={formCliente.fecha} onChange={e => setFormCliente({...formCliente, fecha: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="Fecha (Ej. 15 Octubre)" />
                 </div>
-                <input type="url" value={formCliente.driveLink} onChange={e => setFormCliente({...formCliente, driveLink: e.target.value})} required className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="1. Pega aquí el Link de la Carpeta de Google Drive" />
-                <input type="url" value={formCliente.previewImage} onChange={e => setFormCliente({...formCliente, previewImage: e.target.value})} className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="URL Foto de Portada (Opcional: usa la 1ra foto si queda vacío)" />
 
-                <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-2.5">
+                {/* CARPETA PRINCIPAL (DESCARGA GENERAL: FOTOS + VIDEOS) */}
+                <div>
+                  <label className="text-[10px] font-bold uppercase df-muted ml-1 mb-1 block">
+                    Carpeta Principal de Descarga (Fotos + Videos)
+                  </label>
+                  <input
+                    type="url"
+                    value={formCliente.driveLink}
+                    onChange={e => setFormCliente({...formCliente, driveLink: e.target.value})}
+                    required
+                    className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none"
+                    placeholder="Link principal de Google Drive (carpeta general del cliente)"
+                  />
+                </div>
+
+                <input type="url" value={formCliente.previewImage} onChange={e => setFormCliente({...formCliente, previewImage: e.target.value})} className="w-full df-bg border df-border rounded-xl px-4 py-3 text-sm focus:border-amber-600 df-text outline-none" placeholder="URL Foto de Portada (Opcional: usa la 1ra foto del álbum si queda vacío)" />
+
+                {/* ====================================================== */}
+                {/* ÁLBUM DIGITAL INTERACTIVO (CON LINK PROPIO DE FOTOS)   */}
+                {/* ====================================================== */}
+                <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="text-[11px] font-bold uppercase text-amber-600 flex items-center gap-1.5">
-                      <BookOpen size={14}/> Álbum Digital Interactivo
+                      <BookOpen size={14}/> Álbum Digital Interactivo (Solo Fotos)
                     </label>
+                    {cantidadFotosEnFormulario > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold bg-emerald-500/15 text-emerald-500 px-2 py-0.5 rounded-full">
+                          ✅ {cantidadFotosEnFormulario} fotos listas
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setFormCliente(prev => ({ ...prev, albumFotosTexto: '' }))}
+                          className="text-[10px] font-bold text-red-500 hover:underline cursor-pointer"
+                        >
+                          Limpiar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* CAMPO INDEPENDIENTE PARA LA SUBCARPETA DE FOTOS */}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="url"
+                      value={formCliente.albumCarpetaUrl}
+                      onChange={e => setFormCliente({ ...formCliente, albumCarpetaUrl: e.target.value })}
+                      placeholder="Pega aquí el link de la subcarpeta de FOTOS..."
+                      className="flex-1 df-bg border df-border rounded-xl px-3 py-2.5 text-xs focus:border-amber-600 df-text outline-none"
+                    />
                     <button
                       type="button"
                       onClick={importarCarpetaAlAlbumCliente}
                       disabled={extrayendoAlbumCliente}
-                      className="bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                      className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all flex-shrink-0"
                     >
-                      <Sparkles size={12} />
-                      {extrayendoAlbumCliente ? 'Extrayendo...' : 'Extraer de Drive (1 clic)'}
+                      <Sparkles size={13} />
+                      {extrayendoAlbumCliente ? 'Extrayendo...' : 'Extraer fotos'}
                     </button>
                   </div>
+
+                  <p className="text-[10px] df-muted leading-relaxed">
+                    📁 Pega el link de la carpeta que contiene <strong>solo las fotos</strong> (dentro de tu carpeta principal) y toca <strong>Extraer fotos</strong>. La carpeta de descarga principal de arriba no se modifica.
+                  </p>
+
                   <textarea 
                     rows="3"
                     value={formCliente.albumFotosTexto}
                     onChange={e => setFormCliente({...formCliente, albumFotosTexto: e.target.value})}
-                    placeholder="Toca 'Extraer de Drive' para jalar del Link Principal, o pega aquí el link de la subcarpeta de Fotos y toca el botón."
+                    placeholder="Aquí aparecerán automáticamente los links de todas las fotos extraídas (también puedes pegar fotos sueltas, una por línea)."
                     className="w-full df-bg border df-border rounded-xl px-3 py-2 text-xs focus:border-amber-600 df-text outline-none resize-y"
                   />
                 </div>
